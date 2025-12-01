@@ -200,8 +200,7 @@ public class BinanceCombinedServer {
                     .orElse(BigDecimal.ZERO);
 
             if (posRatio.compareTo(new BigDecimal("0.7")) >= 0 &&
-                    cumChange.compareTo(new BigDecimal("8")) >= 0 &&
-                    maxVol.compareTo(new BigDecimal("800000")) >= 0) {
+                    cumChange.compareTo(new BigDecimal("8")) >= 0) {
                 strongs.add(symbol);
             }
         }
