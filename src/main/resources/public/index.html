@@ -52,6 +52,7 @@
     let timer = null;
     const TOP_NUM = 10;
     const threshold = 4;
+    let errNum = 0;//报错次数统计
 
     let lastRankJson = "";
     let lastStrongJson = "";
@@ -98,6 +99,7 @@
             lastRankJson = currentJson;
             console.log("涨幅榜数据更新：",currentJson)
             let changeHtml = '';
+            errNum=0;
 
             // 按后端 INTERVALS 顺序循环
             INTERVALS.forEach(interval => {
@@ -149,7 +151,14 @@
                 }
             }
 
-        } catch(err){ console.error("数据刷新错误：", err); }
+        } catch(err){
+            errNum++;
+            if(errNum>=10){
+                alert("数据刷新失败，请检查网络连接或联系管理员！");
+                errNum=0;
+            }
+            console.error("数据刷新错误：", err);
+        }
     }
 
     // ----------- 强势币通知条刷新 -----------
