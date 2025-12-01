@@ -101,6 +101,11 @@
             let changeHtml = '';
             errNum=0;
 
+            console.log(data["5m"].change.length)
+            if (data["5m"].change.length === 0) {
+                alert("当前时段无数据，请稍后再试！")
+            }
+
             // 按后端 INTERVALS 顺序循环
             INTERVALS.forEach(interval => {
                 if (!selectedIntervals.includes(interval)) return; // 未选中，跳过
@@ -141,6 +146,7 @@
             // 涨幅提醒
             if (data["5m"]) {
                 const list5m = data["5m"].change;
+
                 const maxChange = Math.max(...list5m.map(c=>Number(c.change)));
                 if(maxChange >= threshold){
                     const audio = document.getElementById("alertSound");
