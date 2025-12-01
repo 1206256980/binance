@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URL;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -111,7 +112,7 @@ public class BinanceCombinedServer {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         long used = System.currentTimeMillis() - start;
-        System.out.println("全部请求完成，耗时：" + used + "ms");
+        System.out.println(ZonedDateTime.now()+"----全部请求完成，耗时：" + used + "ms");
 
         klineCache = newKlineCache;
 
