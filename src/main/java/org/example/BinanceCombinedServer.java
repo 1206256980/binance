@@ -18,8 +18,8 @@ public class BinanceCombinedServer {
     // ------------------- 公共配置 -------------------
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
-    private static final int THREADS = 100;
-    private static final int DEFAULT_REFRESH_SECONDS = 20;
+    private static final int THREADS = 200;
+    private static final int DEFAULT_REFRESH_SECONDS = 15;
     private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m"};
     private static final int TOP_CHANGE = 10;
     private static final int TOP_AMPLITUDE = 10;
