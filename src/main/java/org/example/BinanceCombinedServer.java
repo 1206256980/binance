@@ -9,8 +9,6 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URL;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -20,8 +18,8 @@ public class BinanceCombinedServer {
     // ------------------- 公共配置 -------------------
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
-    private static final int THREADS = 100;
-    private static final int DEFAULT_REFRESH_SECONDS = 15;
+    private static final int THREADS = 300;
+    private static final int DEFAULT_REFRESH_SECONDS = 20;
     private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m"};
     private static final int TOP_CHANGE = 10;
     private static final int TOP_AMPLITUDE = 10;
@@ -64,14 +62,14 @@ public class BinanceCombinedServer {
 
     private static volatile List<String> cachedSymbols = new ArrayList<>();
     private static volatile long cachedSymbolsTime = 0;
-    private static final long SYMBOLS_CACHE_DURATION = 10 * 60 * 1000; // 10分钟
+    private static final long SYMBOLS_CACHE_DURATION = 60 * 60 * 1000; // 1小时
 
 
     // 强势币使用的 K 线根数（6 根 5m -> 30 分钟）
     private static final int STRONG_KLINE_COUNT = 6;
 
     public static void main(String[] args) throws Exception {
-//        initProxy();
+        initProxy();
         Spark.port(4567);
         Spark.staticFiles.location("/public");
 
@@ -113,7 +111,7 @@ public class BinanceCombinedServer {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         long used = System.currentTimeMillis() - start;
-        System.out.println(ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))+"----全部请求完成，耗时：" + used + "ms");
+        System.out.println("全部请求完成，耗时：" + used + "ms");
 
         klineCache = newKlineCache;
 
@@ -178,32 +176,90 @@ public class BinanceCombinedServer {
             // 取最近 STRONG_KLINE_COUNT 根
             List<CandleRaw> lastN = rawsAll.subList(rawsAll.size() - STRONG_KLINE_COUNT, rawsAll.size());
 
-            // 计算区间最低、最高、当前价
-            BigDecimal lowMin = lastN.stream().map(c -> c.low).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            // 检查数据完整性
+            if (lastN.size() < STRONG_KLINE_COUNT) {
+                continue; // 数据不足，跳过
+            }
+
+            // ------------------- 核心变量定义 -------------------
             BigDecimal highMax = lastN.stream().map(c -> c.high).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
             BigDecimal current = lastN.get(lastN.size() - 1).close;
-
-            BigDecimal denominator = highMax.subtract(lowMin);
-            if (denominator.compareTo(BigDecimal.ZERO) == 0) {
-                continue; // 无波动，跳过
-            }
-            BigDecimal posRatio = current.subtract(lowMin).divide(denominator, 8, RoundingMode.HALF_UP);
-
-            // 累计涨幅基于 lastN 的第一根 open（最近 STRONG_KLINE_COUNT 根的区间）
             BigDecimal firstOpen = lastN.get(0).open;
-            if (firstOpen.compareTo(BigDecimal.ZERO) == 0) continue; // 防止除0
-            BigDecimal cumChange = current.subtract(firstOpen).divide(firstOpen, 8, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            BigDecimal currentOpen = lastN.get(lastN.size() - 1).open; // 当前 5m K 线的开盘价
 
-            // 成交额基于 lastN 的成交量 * 收盘价
+            // ----------------------------------------------------
+            // (A) 组合一：价格位置、累计涨幅、最大成交额
+            // ----------------------------------------------------
+            boolean isComboOne = false;
+
+            // 1. PosRatio 计算
+            BigDecimal posRatio = BigDecimal.ZERO;
+            BigDecimal denominator = highMax.subtract(firstOpen);
+            if (denominator.compareTo(BigDecimal.ZERO) > 0) {
+                posRatio = current.subtract(firstOpen).divide(denominator, 8, RoundingMode.HALF_UP);
+            }
+
+            // 2. CumChange 计算
+            BigDecimal cumChange = BigDecimal.ZERO;
+            if (firstOpen.compareTo(BigDecimal.ZERO) > 0) {
+                cumChange = current.subtract(firstOpen).multiply(new BigDecimal("100"))
+                        .divide(firstOpen, 8, RoundingMode.HALF_UP);
+            }
+
+            // 3. MaxVol 计算 (Volume * Close 的最大值)
             BigDecimal maxVol = lastN.stream()
-                    .map(r -> r.volume.multiply(r.close))
+                    .map(c -> c.volume.multiply(c.close))
                     .max(BigDecimal::compareTo)
                     .orElse(BigDecimal.ZERO);
 
+            // 组合一判断
             if (posRatio.compareTo(new BigDecimal("0.7")) >= 0 &&
                     cumChange.compareTo(new BigDecimal("8")) >= 0) {
+                isComboOne = true;
+            }
+
+            // ----------------------------------------------------
+            // (B) 组合二：成交量突增 AND 5m 暴涨（新逻辑）
+            // ----------------------------------------------------
+            boolean isVolumeSpikeAndSurge = false;
+
+            // 1. 计算当前 5m 涨幅（新需求）
+            BigDecimal current5mChange = BigDecimal.ZERO;
+            if (currentOpen.compareTo(BigDecimal.ZERO) > 0) {
+                current5mChange = current.subtract(currentOpen).multiply(new BigDecimal("100"))
+                        .divide(currentOpen, 8, RoundingMode.HALF_UP);
+            }
+
+            // 2. 当前 K 线的原始成交量
+            BigDecimal currentVolume = lastN.get(lastN.size() - 1).volume;
+
+            // 3. 前 N-1 根 K 线的最大原始成交量
+            BigDecimal previousMaxVolume = lastN.subList(0, lastN.size() - 1)
+                    .stream()
+                    .map(c -> c.volume)
+                    .max(BigDecimal::compareTo)
+                    .orElse(BigDecimal.ZERO);
+
+            // 组合二判断： [成交量突增] AND [5m 涨幅 >= 5%]
+            if (previousMaxVolume.compareTo(BigDecimal.ZERO) > 0) {
+                // Condition 1: Volume Spike
+                boolean volumeCondition = currentVolume.compareTo(previousMaxVolume.multiply(new BigDecimal("4.0"))) >= 0;//成交量4倍量爆量
+
+                // Condition 2: Price Surge (5m Change >= 5%)
+                boolean surgeCondition = current5mChange.compareTo(new BigDecimal("5")) >= 0;//涨幅大于5
+
+                if (volumeCondition && surgeCondition) {
+                    isVolumeSpikeAndSurge = true;
+                }
+            }
+
+            // ----------------------------------------------------
+            // (C) 最终或逻辑 (OR Logic)
+            // ----------------------------------------------------
+            if (isComboOne || isVolumeSpikeAndSurge) {
                 strongs.add(symbol);
             }
+
         }
         strongCache = strongs;
     }
@@ -286,7 +342,6 @@ public class BinanceCombinedServer {
             br.close();
             return sb.toString();
         } catch (Exception e) {
-            e.printStackTrace();
             return null;
         }
     }
