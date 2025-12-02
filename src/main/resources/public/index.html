@@ -6,7 +6,7 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 10px; background: #f9f9f9; }
         h1 { text-align: center; }
-        #controls { text-align: center; margin-bottom: 10px; }
+        #controls { text-align: center; margin-bottom: 10px;font-size: 12px; }
         #tables { display: flex; flex-direction: column; gap: 10px; }
         #change-tables, #amplitude-tables { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
         .table-container { background: #fff; padding: 8px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); width: 440px; }
@@ -88,6 +88,15 @@
     });
 
     // ----------- 涨幅榜刷新 -----------
+    // 新增：根据涨幅数值返回背景色样式的辅助函数
+    function getColorStyle(value) {
+        if (!value) return "";
+        const num = parseFloat(value);
+        if (num > 10) return "background-color: #dc3545; color: white; font-weight: bold;"; // 红色 (>10)
+        if (num > 7)  return "background-color: #fd7e14; color: white; font-weight: bold;"; // 橙色 (>7)
+        if (num > 4)  return "background-color: #ffc107; color: black; font-weight: bold;"; // 黄色 (>4)
+        return ""; // 默认无样式
+    }
     async function fetchRankData(forceUpdate=false) {
         try {
             const res = await fetch('/data', { cache: "no-store" });
@@ -124,10 +133,15 @@
                         <th>收盘</th>
                     </tr>`;
                 changeList.forEach((c,i)=>{
+                    // 获取 5分钟涨幅的数据
+                    const change5m = c.others && c.others['5m'] ? c.others['5m'].change : 0;
+
+                    // 计算 5分钟这一格的样式
+                    const style5m = getColorStyle(change5m);
                     changeHtml += `<tr>
                     <td>${i+1}</td>
                     <td>${c.symbol}</td>
-                    <td>${c.others && c.others['5m']?c.others['5m'].change.toFixed(2):'-'}</td>
+                    <td style="${style5m}">${change5m ? Number(change5m).toFixed(2) : '-'}</td>
                     <td>${c.others && c.others['5m']?c.others['5m'].amplitude.toFixed(2):'-'}</td>
                     <td>${c.others && c.others['15m']?c.others['15m'].change.toFixed(2):'-'}</td>
                     <td>${c.others && c.others['15m']?c.others['15m'].amplitude.toFixed(2):'-'}</td>
