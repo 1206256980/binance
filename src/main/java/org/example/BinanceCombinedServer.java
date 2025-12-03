@@ -128,8 +128,6 @@ public class BinanceCombinedServer {
         initProxy();
         loadIndexHistory(); // 🌟 启动时加载历史数据
         Spark.port(4567);
-        // 🌟 关键：使用外部静态文件路径，以便读取程序生成的 public 目录
-        Spark.externalStaticFileLocation("public");
         Spark.staticFiles.location("/public");
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
