@@ -143,6 +143,7 @@ public class BinanceCombinedServer {
         initProxy();
         loadIndexHistory(); // 🌟 启动时加载历史数据
         Spark.port(4567);
+        Spark.externalStaticFileLocation("public");
         Spark.staticFiles.location("/public");
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
