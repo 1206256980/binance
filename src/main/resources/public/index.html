@@ -59,6 +59,51 @@
 
     const INTERVALS = ["5m","10m","15m","30m","40m","50m","60m"];
     const defaultSelected = ["5m","15m","30m"];
+
+    // ------------------- 币种颜色映射配置 (已扩展至 18 种柔和色) -------------------
+    const COLOR_POOL = [
+        "#E3F2FD", // Light Blue
+        "#E8F5E9", // Light Green
+        "#FFF3E0", // Light Orange/Peach
+        "#F3E5F5", // Light Purple
+        "#FCE4EC", // Light Pink
+        "#F0F4C3", // Light Olive
+        "#F5F5F5", // Light Gray
+        "#F5F5FF", // Very Light Lavender
+        "#E0F7FA", // Very Light Cyan
+        "#F9FBE7", // Very Light Yellow/Lime
+        "#E1F5FE", // Another Light Blue
+        "#FFFDE7", // Creamy Yellow
+        "#FFEBEE", // Lighter Pink
+        "#F0F8FF", // AliceBlue
+        "#D1F2EB", // Light Mint
+        "#FADBD8", // Light Rose
+        "#EBF5FB", // Light Steel Blue
+        "#D5F5E3"  // Light Emerald
+    ];
+    const COLOR_CACHE = {}; // 缓存已分配的币种颜色
+
+    // 根据币种名称生成一个稳定的、唯一的背景色
+    function getSymbolBackgroundColor(symbol) {
+        if (COLOR_CACHE[symbol]) {
+            return COLOR_CACHE[symbol];
+        }
+
+        // 简单的字符串哈希算法
+        let hash = 0;
+        for (let i = 0; i < symbol.length; i++) {
+            // 使用位运算生成哈希值
+            hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        // 将哈希值映射到颜色池的索引
+        const index = Math.abs(hash) % COLOR_POOL.length;
+        const color = COLOR_POOL[index];
+
+        COLOR_CACHE[symbol] = color; // 缓存结果，确保下次刷新颜色不变
+        return color;
+    }
+
     let selectedIntervals = JSON.parse(localStorage.getItem("selectedIntervals") || "[]");
     if(selectedIntervals.length === 0) selectedIntervals = defaultSelected;
 
@@ -133,16 +178,20 @@
                         <th>收盘</th>
                     </tr>`;
                 changeList.forEach((c,i)=>{
-                    // 获取 5分钟涨幅的数据
+                    // 🌟 新增：获取该币种的稳定背景色
+                    const rowBgColor = getSymbolBackgroundColor(c.symbol);
+                    // 获取 5分钟涨幅的数据 (用于红黄橙高亮)
                     const change5m = c.others && c.others['5m'] ? c.others['5m'].change : 0;
-
-                    // 计算 5分钟这一格的样式
+                    // 计算 5分钟这一格的样式 (红黄橙)
                     const style5m = getColorStyle(change5m);
-                    changeHtml += `<tr>
+                    // 替换原有的 <tr> 标签，注入背景色
+                    changeHtml += `<tr style="background-color: ${rowBgColor};">
                     <td>${i+1}</td>
                     <td>${c.symbol}</td>
+
                     <td style="${style5m}">${change5m ? Number(change5m).toFixed(2) : '-'}</td>
                     <td>${c.others && c.others['5m']?c.others['5m'].amplitude.toFixed(2):'-'}</td>
+
                     <td>${c.others && c.others['15m']?c.others['15m'].change.toFixed(2):'-'}</td>
                     <td>${c.others && c.others['15m']?c.others['15m'].amplitude.toFixed(2):'-'}</td>
                     <td>${c.others && c.others['30m']?c.others['30m'].change.toFixed(2):'-'}</td>
