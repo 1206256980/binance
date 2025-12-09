@@ -41,6 +41,31 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
+        <!-- OkHttp，用于请求币安API -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>3.14.9</version> <!-- 最后支持 JDK8 的版本 -->
+        </dependency>
+
+        <!-- Jackson，用于 JSON 解析 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.14.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.14.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.14.2</version>
+        </dependency>
 
     </dependencies>
 
@@ -63,7 +88,7 @@
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <!-- ② 指定你的程序入口 main 方法 -->
-                                    <mainClass>org.example.BinanceCombinedServer</mainClass>
+                                    <mainClass>org.example.Main</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>
