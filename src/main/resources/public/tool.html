@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多功能计算工具箱 - 最终稳定布局</title>
+    <style>
+        /* --- 基础样式 --- */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            box-sizing: border-box; /* 确保 padding 包含在 body 宽度内 */
+        }
+        .container {
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            padding: 20px 20px 0 20px; /* 底部不留 padding, 间距由 tools-grid 决定 */
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #17a2b8;
+            text-align: center;
+        }
+
+        /* --- 关键布局样式：移除 gap，使用负外边距抵消内部模块边距 --- */
+        .tools-grid {
+            display: flex;
+            flex-wrap: wrap;
+            margin-left: -10px; /* 抵消左侧间距 */
+            margin-right: -10px; /* 抵消右侧间距 */
+            margin-bottom: 20px;
+        }
+
+        /* --- 工具模块样式：精确计算宽度和间距 --- */
+        .calculator-section {
+            /* 关键修改 1: 使用 margin 模拟 10px 左右间距和 20px 下方间距 */
+            margin-left: 10px;
+            margin-right: 10px;
+            margin-bottom: 20px;
+
+            /* 关键修改 2: 确保计算后的宽度能稳定占据 1/3，并阻止被压缩 */
+            flex: 0 0 calc(33.333333% - 20px); /* 减去 左右 10px margin，共 20px */
+            min-width: 280px; /* 设置一个合理的最小宽度 */
+
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+        }
+
+        .placeholder {
+            border: 1px dashed #ced4da;
+            background-color: #f8f9fa;
+        }
+
+        /* --- 内部元素样式 (保持不变) --- */
+        h2 {
+            color: #007bff;
+            border-left: 5px solid #007bff;
+            padding-left: 10px;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .input-group input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-weight: bold;
+            min-height: 20px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .result:hover {
+            background-color: #d1e2f0;
+        }
+        .result span {
+            color: #dc3545;
+        }
+        .copy-hint {
+            font-size: 0.75em;
+            color: #6c757d;
+            margin-left: 5px;
+        }
+
+        /* 复制成功的提示 */
+        #copyMessage {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .visible {
+            opacity: 1 !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <div id="copyMessage">✅ 已复制到剪贴板！</div>
+
+    <div class="tools-grid">
+
+        <div class="calculator-section">
+            <h2>1. 📈 价格百分比变化</h2>
+            <p style="font-size: 0.8em; color: #6c757d;">公式：$((结束价 - 起始价) / 起始价) \times 100\%$</p>
+
+            <div class="input-group">
+                <label for="startPrice">起始价：</label>
+                <input type="number" id="startPrice" placeholder="如 0.4974" oninput="calculatePercentageChange()">
+            </div>
+
+            <div class="input-group">
+                <label for="endPrice">结束价：</label>
+                <input type="number" id="endPrice" placeholder="如 0.5011" oninput="calculatePercentageChange()">
+            </div>
+
+            <div class="result" onclick="copyResult('percentageChangeResult')">
+                变化：<span id="percentageChangeResult"></span>
+                <span class="copy-hint">(点击复制)</span>
+            </div>
+        </div>
+
+        <div class="calculator-section">
+            <h2>2. 💰 价格百分比调整</h2>
+            <p style="font-size: 0.8em; color: #6c757d;">公式：$价格 \times (1 + 百分比)$</p>
+            <p style="font-size: 0.7em; color: #6c757d;">(百分比请按整数输入，如 5 或 -2)</p>
+
+            <div class="input-group">
+                <label for="originalPrice">输入价格：</label>
+                <input type="number" id="originalPrice" placeholder="请输入原始价格" oninput="calculateAdjustedPrice()">
+            </div>
+
+            <div class="input-group">
+                <label for="percentage">调整百分比 (%)：</label>
+                <input type="number" id="percentage" placeholder="请输入百分比" oninput="calculateAdjustedPrice()">
+            </div>
+
+            <div class="result" onclick="copyResult('adjustedPriceResult')">
+                结果：<span id="adjustedPriceResult"></span>
+                <span class="copy-hint">(点击复制)</span>
+            </div>
+        </div>
+
+        <div class="calculator-section placeholder">
+            <h2>3. ✨ 待添加新工具</h2>
+            <p style="font-size: 0.9em; color: #6c757d; text-align: center; padding-top: 50px;">
+                请告诉我下一个工具的功能，我将在这里为您实现。
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function calculatePercentageChange() {
+        const startPrice = parseFloat(document.getElementById('startPrice').value);
+        const endPrice = parseFloat(document.getElementById('endPrice').value);
+        const resultElement = document.getElementById('percentageChangeResult');
+
+        if (isNaN(startPrice) || isNaN(endPrice) || startPrice === 0) {
+            resultElement.textContent = '请检查输入或起始价不能为 0';
+            return;
+        }
+
+        const change = endPrice - startPrice;
+        const percentageChange = (change / startPrice) * 100;
+
+        resultElement.textContent = percentageChange.toFixed(4) + '%';
+    }
+
+    function calculateAdjustedPrice() {
+        const originalPrice = parseFloat(document.getElementById('originalPrice').value);
+        const percentage = parseFloat(document.getElementById('percentage').value);
+        const resultElement = document.getElementById('adjustedPriceResult');
+
+        if (isNaN(originalPrice) || isNaN(percentage)) {
+            resultElement.textContent = '请检查输入';
+            return;
+        }
+
+        const factor = 1 + (percentage / 100);
+
+        const adjustedPrice = originalPrice * factor;
+
+        resultElement.textContent = adjustedPrice.toFixed(8);
+    }
+
+    function copyResult(spanId) {
+        const resultSpan = document.getElementById(spanId);
+        let textToCopy = resultSpan.textContent;
+
+        if (!textToCopy || textToCopy.includes('检查输入') || textToCopy.includes('¥')) {
+            textToCopy = textToCopy.replace('¥', '').trim();
+        }
+
+        if (!textToCopy) return;
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            showCopyMessage();
+        }).catch(err => {
+            console.error('复制失败:', err);
+            alert('复制失败，请手动复制：' + textToCopy);
+        });
+    }
+
+    function showCopyMessage() {
+        const message = document.getElementById('copyMessage');
+        message.classList.add('visible');
+
+        setTimeout(() => {
+            message.classList.remove('visible');
+        }, 2000);
+    }
+
+    calculatePercentageChange();
+    calculateAdjustedPrice();
+
+</script>
+
+</body>
+</html>

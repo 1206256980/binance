@@ -47,8 +47,11 @@
 <audio id="alertSoundStrong">
     <source src="/strong.wav" type="audio/wav">
 </audio>
+<audio id="alertError">
+    <source src="/error.wav" type="audio/wav">
+</audio>
 <script>
-    let refreshSeconds = 0.5;
+    let refreshSeconds = 1.5;
     let timer = null;
     const TOP_NUM = 10;
     const threshold = 4;
@@ -148,18 +151,19 @@
             const data = await res.json();
 
             const currentJson = JSON.stringify(data);
-            if(!forceUpdate && currentJson === lastRankJson) return; // 只有非强制刷新才判断
+            if (data["5m"].change.length === 0) {
+                errorAlert();
+                return;
+            }
+            if(!forceUpdate && currentJson === lastRankJson) {// 只有非强制刷新才判断
+                errorAlert(100);
+                return;
+            }
             updateLastChangeTime();
             lastRankJson = currentJson;
             console.log("涨幅榜数据更新：",currentJson)
             let changeHtml = '';
             errNum=0;
-
-            console.log(data["5m"].change.length)
-            if (data["5m"].change.length === 0) {
-                alert("当前时段无数据，请稍后再试！")
-            }
-
             // 按后端 INTERVALS 顺序循环
             INTERVALS.forEach(interval => {
                 if (!selectedIntervals.includes(interval)) return; // 未选中，跳过
@@ -213,7 +217,7 @@
                 const maxChange = Math.max(...list5m.map(c=>Number(c.change)));
                 if(maxChange >= threshold){
                     const audio = document.getElementById("alertSound");
-                    audio.volume = 0.3;
+                    audio.volume = 1;
                     audio.currentTime = 0;
                     audio.play().catch(()=>{});
                     console.log("涨幅超过阈值，已提醒一次！");
@@ -221,11 +225,7 @@
             }
 
         } catch(err){
-            errNum++;
-            if(errNum>=10){
-                alert("数据刷新失败，请检查网络连接或联系管理员！");
-                errNum=0;
-            }
+            errorAlert();
             console.error("数据刷新错误：", err);
         }
     }
@@ -245,7 +245,7 @@
 
             if(data.length > 0){
                 const audio = document.getElementById("alertSoundStrong");
-                audio.volume = 0.5;
+                audio.volume = 1;
                 audio.currentTime = 0;
                 audio.play().catch(()=>{});
                 console.log("发现新的强势币，已播放提醒音");
@@ -310,6 +310,19 @@
             pad(now.getSeconds());
 
         document.getElementById("currentTime").innerText = str;
+    }
+
+    function errorAlert(MAX_NUM=20){
+        errNum++;
+        if (errNum >= MAX_NUM) {
+            const audio = document.getElementById("alertError");
+            audio.volume = 1;
+            audio.currentTime = 0;
+            audio.play().catch(() => {
+            });
+            errNum=0;
+            console.log("数据刷新失败，请检查网络连接或联系管理员！");
+        }
     }
 
     setInterval(updateCurrentTime, 1000);

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Binance Top 涨幅 & 振幅</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 10px; background: #f9f9f9; }
+        h1 { text-align: center; }
+        #controls { text-align: center; margin-bottom: 10px; }
+        #tables {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #change-tables, #amplitude-tables {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            max-height: 48vh;
+            overflow: hidden;
+        }
+        .table-container {
+            background: #fff;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            width: 480px;
+        }
+        table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+        th { background: #eee; }
+        h2 { text-align: center; margin-top: 0; font-size: 14px; }
+        .green { color: green; }
+        .red { color: red; }
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <label>刷新间隔（秒）：
+        <input type="number" id="refreshInterval" value="60" min="5" max="600" style="width:60px;">
+    </label>
+    <button onclick="restartAutoRefresh()">应用</button>
+    <button onclick="startTimer()">开始</button>
+    <button onclick="stopTimer()">停止</button>
+    &nbsp;&nbsp;状态：<span id="refreshStatus">正在刷新</span>
+</div>
+
+<div id="tables">
+    <div id="change-tables"></div>
+    <div id="amplitude-tables"></div>
+</div>
+
+<audio id="alertSound">
+    <source src="/alert.wav" type="audio/wav">
+</audio>
+
+<script>
+    let refreshSeconds = 0.5; // 默认 60s
+    let timer = null;
+    let lastJson = "";
+    const TOP_NUM = 20;
+    const threshold = 3; // 5分钟提醒阈值（%）
+
+    // 每个 symbol 只提醒一次
+    const alertedSymbols = new Set();
+
+    function formatCell(v) {
+        if (v === undefined || v === null) return "-";
+        if (typeof v === "number") return v.toFixed(2);
+        if (!isNaN(Number(v))) return Number(v).toFixed(2);
+        return v;
+    }
+
+    // 返回列顺序： 主字段、同周期另一个、(otherInterval1 change, otherInterval1 amp), (otherInterval2 change, otherInterval2 amp), open, close
+    function buildColumns(interval, isChangeTable) {
+        // intervals in canonical order
+        const order = ["5m", "15m", "30m"];
+
+        // determine the two other intervals in ascending order excluding current
+        const others = order.filter(i => i !== interval);
+
+        const cols = [];
+
+        // primary two columns depend on isChangeTable and current interval
+        if (isChangeTable) {
+            // primary is change (current interval)
+            cols.push({key: "change", title: interval + " 涨幅(%)", primary: true});
+            cols.push({key: "amplitude", title: interval + " 振幅(%)", primary: false});
+        } else {
+            // primary is amplitude (current interval)
+            cols.push({key: "amplitude", title: interval + " 振幅(%)", primary: true});
+            cols.push({key: "change", title: interval + " 涨幅(%)", primary: false});
+        }
+
+        // then for each other interval, add its change and amplitude
+        for (let j = 0; j < others.length; j++) {
+            const it = others[j];
+            cols.push({key: "others_" + it + "_change", title: it + " 涨幅(%)"});
+            cols.push({key: "others_" + it + "_amp", title: it + " 振幅(%)"});
+        }
+
+        cols.push({key: "close", title: "收盘"});
+
+        return cols;
+    }
+
+    async function fetchData() {
+        try {
+            const res = await fetch('/data', { cache: "no-store" });
+            const data = await res.json();
+
+            const currentJson = JSON.stringify(data);
+            if (currentJson === lastJson) {
+                console.log("数据无变化，不刷新页面");
+                return;
+            }
+            lastJson = currentJson;
+
+            let changeHtml = '';
+            let amplitudeHtml = '';
+
+            // 遍历每个 interval（保持后端返回的顺序）
+            Object.keys(data).forEach(interval => {
+                // === 涨幅表 ===
+                const changeList = (data[interval].change || []).slice(0, TOP_NUM);
+                const changeCols = buildColumns(interval, true);
+
+                changeHtml += `<div class="table-container">
+                    <h2>${interval} K 线 Top ${TOP_NUM} 涨幅</h2>
+                    <table>
+                        <tr>
+                            <th>排名</th>
+                            <th>交易对</th>`;
+                changeCols.forEach(col => { changeHtml += `<th>${col.title}</th>`; });
+                changeHtml += `</tr>`;
+
+                changeList.forEach((c, i) => {
+                    changeHtml += `<tr>
+                        <td>${i+1}</td>
+                        <td>${c.symbol}</td>`;
+
+                    changeCols.forEach(col => {
+                        if (col.key === "change") {
+                            const v = c.change;
+                            const num = Number(v);
+                            changeHtml += `<td class="${!isNaN(num) && num>=0 ? 'green' : 'red'}">${formatCell(num)}</td>`;
+                        } else if (col.key === "amplitude") {
+                            const v = c.amplitude;
+                            changeHtml += `<td>${formatCell(Number(v))}</td>`;
+                        } else if (col.key.startsWith("others_")) {
+                            const parts = col.key.split("_");           // ["others","15m","change"] 或 ["others","30m","amp"]
+                            const otherInterval = parts[1];
+                            const typeRaw = parts[2];                   // "change" 或 "amp"
+                            const type = (typeRaw === "amp") ? "amplitude" : "change"; // 映射到后端字段名
+                            let val = null;
+                            if (c.others && c.others[otherInterval]) {
+                                // defensive: try both keys if unsure
+                                if (c.others[otherInterval][type] !== undefined && c.others[otherInterval][type] !== null) {
+                                    val = c.others[otherInterval][type];
+                                } else if (type === "amplitude" && (c.others[otherInterval]["amp"] !== undefined)) {
+                                    // 万一后端被改成了 "amp"，也尝试取它
+                                    val = c.others[otherInterval]["amp"];
+                                } else if (type === "change" && (c.others[otherInterval]["chg"] !== undefined)) {
+                                    val = c.others[otherInterval]["chg"];
+                                }
+                            }
+                            changeHtml += `<td>${formatCell(val)}</td>`;
+                        } else if (col.key === "open") {
+                            changeHtml += `<td>${c.open ? Number(c.open).toFixed(5) : '-'}</td>`;
+                        } else if (col.key === "close") {
+                            changeHtml += `<td>${c.close ? Number(c.close).toFixed(5) : '-'}</td>`;
+                        } else {
+                            changeHtml += `<td>-</td>`;
+                        }
+                    });
+
+                    changeHtml += `</tr>`;
+                });
+
+                changeHtml += `</table></div>`;
+
+                // === 振幅表 ===
+                const amplitudeList = (data[interval].amplitude || []).slice(0, TOP_NUM);
+                const ampCols = buildColumns(interval, false);
+
+                amplitudeHtml += `<div class="table-container">
+                    <h2>${interval} K 线 Top ${TOP_NUM} 振幅</h2>
+                    <table>
+                        <tr>
+                            <th>排名</th>
+                            <th>交易对</th>`;
+                ampCols.forEach(col => { amplitudeHtml += `<th>${col.title}</th>`; });
+                amplitudeHtml += `</tr>`;
+
+                amplitudeList.forEach((c, i) => {
+                    amplitudeHtml += `<tr>
+                        <td>${i+1}</td>
+                        <td>${c.symbol}</td>`;
+                    ampCols.forEach(col => {
+                        if (col.key === "change") {
+                            const v = c.change;
+                            const num = Number(v);
+                            amplitudeHtml += `<td class="${!isNaN(num) && num>=0 ? 'green' : 'red'}">${formatCell(num)}</td>`;
+                        } else if (col.key === "amplitude") {
+                            const v = c.amplitude;
+                            amplitudeHtml += `<td>${formatCell(Number(v))}</td>`;
+                        } else if (col.key.startsWith("others_")) {
+                            const parts = col.key.split("_");           // ["others","15m","change"] 或 ["others","30m","amp"]
+                            const otherInterval = parts[1];
+                            const typeRaw = parts[2];                   // "change" 或 "amp"
+                            const type = (typeRaw === "amp") ? "amplitude" : "change"; // 映射到后端字段名
+                            let val = null;
+                            if (c.others && c.others[otherInterval]) {
+                                // defensive: try both keys if unsure
+                                if (c.others[otherInterval][type] !== undefined && c.others[otherInterval][type] !== null) {
+                                    val = c.others[otherInterval][type];
+                                } else if (type === "amplitude" && (c.others[otherInterval]["amp"] !== undefined)) {
+                                    // 万一后端被改成了 "amp"，也尝试取它
+                                    val = c.others[otherInterval]["amp"];
+                                } else if (type === "change" && (c.others[otherInterval]["chg"] !== undefined)) {
+                                    val = c.others[otherInterval]["chg"];
+                                }
+                            }
+                            changeHtml += `<td>${formatCell(val)}</td>`;
+                        } else if (col.key === "open") {
+                            amplitudeHtml += `<td>${c.open ? Number(c.open).toFixed(5) : '-'}</td>`;
+                        } else if (col.key === "close") {
+                            amplitudeHtml += `<td>${c.close ? Number(c.close).toFixed(5) : '-'}</td>`;
+                        } else {
+                            amplitudeHtml += `<td>-</td>`;
+                        }
+                    });
+                    amplitudeHtml += `</tr>`;
+                });
+
+                amplitudeHtml += `</table></div>`;
+            });
+
+            document.getElementById('change-tables').innerHTML = changeHtml;
+            document.getElementById('amplitude-tables').innerHTML = amplitudeHtml;
+
+            // ========= 5m 涨幅提醒逻辑（每个币只提醒一次） =========
+            if (data["5m"]) {
+                const list5m = data["5m"].change || [];
+                for (let i = 0; i < list5m.length; i++) {
+                    const item = list5m[i];
+                    const chg = Number(item.change);
+                    if (!isNaN(chg) && chg >= threshold && !alertedSymbols.has(item.symbol)) {
+                        alertedSymbols.add(item.symbol);
+                        const audio = document.getElementById("alertSound");
+                        audio.volume = 0.3;
+                        audio.currentTime = 0;
+                        audio.play().catch(() => {});
+                        console.log("提醒：" + item.symbol + " 5m涨幅=" + chg);
+                    }
+                }
+            }
+
+        } catch (err) {
+            console.error("数据刷新错误：", err);
+        }
+    }
+
+    function startTimer() {
+        if (timer) clearInterval(timer);
+        timer = setInterval(fetchData, refreshSeconds * 1000);
+        document.getElementById('refreshStatus').innerText = "正在刷新";
+        document.getElementById('refreshStatus').style.color = "green";
+        console.log("自动刷新已启动，间隔:", refreshSeconds, "秒");
+        fetchData();
+    }
+
+    function stopTimer() {
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('refreshStatus').innerText = "已停止刷新";
+            document.getElementById('refreshStatus').style.color = "red";
+            console.log("自动刷新已停止");
+        }
+    }
+
+    function restartAutoRefresh() {
+        const v = parseInt(document.getElementById('refreshInterval').value);
+        if (!isNaN(v) && v >= 5 && v <= 600) {
+            refreshSeconds = v;
+            console.log("刷新间隔已更新:", refreshSeconds, "秒");
+        }
+        startTimer();
+    }
+
+    // 页面加载默认启动
+    startTimer();
+</script>
+</body>
+</html>
