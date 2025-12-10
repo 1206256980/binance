@@ -19,10 +19,10 @@ public class BinanceCombinedServer {
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
     private static final int THREADS = 100;
     private static final int DEFAULT_REFRESH_SECONDS = 20;
-    private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m"};
+    private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m","120m","240m"};
     private static final int TOP_CHANGE = 20;
     private static final int TOP_AMPLITUDE = 20;
-    private static final int KLINE_COUNT = 12; // 取最近 12 根 5m K 线
+    private static final int KLINE_COUNT = 100; // 取最近 12 根 5m K 线
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(THREADS);
 
     // 🌟 新增配置：指数文件路径

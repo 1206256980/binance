@@ -84,7 +84,6 @@ public class FiveMinMonitor {
         Response response = CLIENT.newCall(request).execute();
         if (!response.isSuccessful()) return Collections.emptyList();
         String result = response.body().string();
-        System.out.println(result);
         return MAPPER.readValue(result, new TypeReference<List<List<Object>>>() {});
     }
 
