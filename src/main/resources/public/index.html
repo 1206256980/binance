@@ -1,198 +1,362 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>Binance Top 涨幅 & 振幅 + 强势币通知</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 10px; background: #f9f9f9; }
-        h1 { text-align: center; }
-        #controls { text-align: center; margin-bottom: 10px;font-size: 12px; }
-        #tables { display: flex; flex-direction: column; gap: 10px; }
-        #change-tables, #amplitude-tables { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-        .table-container { background: #fff; padding: 8px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); width: 440px; }
-        table { border-collapse: collapse; width: 100%; font-size:10px; }
-        th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
-        th { background: #eee; }
-        h2 { text-align: center; margin-top: 0; font-size: 14px; }
-        #strong-notice { padding: 6px; text-align:center; background:#ffeeba; font-weight:bold; user-select:text; cursor:default; }
-        .strong-coin { margin:0 4px; color:#d63384; font-weight:bold; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+            background: #f9f9f9;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        #controls {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        #tables {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #change-tables,
+        #amplitude-tables {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .table-container {
+            background: #fff;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            width: 440px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 10px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 4px;
+            text-align: center;
+        }
+
+        th {
+            background: #eee;
+        }
+
+        h2 {
+            text-align: center;
+            margin-top: 0;
+            font-size: 14px;
+        }
+
+        #strong-notice {
+            padding: 6px;
+            text-align: center;
+            background: #ffeeba;
+            font-weight: bold;
+            user-select: text;
+            cursor: default;
+        }
+
+        .strong-coin {
+            margin: 0 4px;
+            color: #d63384;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
 
-<div id="controls">
-    当前时间：<span id="currentTime">--</span>
-    &nbsp;&nbsp;&nbsp;
-    刷新时间：<span id="lastUpdateTime">--</span>
-    <label>刷新间隔（秒）：<input type="number" id="refreshInterval" value="60" min="5" max="600" style="width:50px;"></label>
-    <button onclick="restartAutoRefresh()">应用</button>
-    <button onclick="startTimer()">开始</button>
-    <button onclick="stopTimer()">停止</button>
-    &nbsp;&nbsp;状态：<span id="refreshStatus">正在刷新</span>
-    显示周期：
-    <span id="intervalButtons"></span>
-</div>
+    <!-- 音频启用提示条 -->
+    <div id="audio-enable-bar"
+        style="display:none; background:linear-gradient(90deg, #ff6b6b, #ffa500); color:white; padding:12px; text-align:center; font-weight:bold; cursor:pointer; font-size:14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);"
+        onclick="enableAudio()">
+        🔔 点击页面任意位置启用音频提醒（浏览器安全限制，每次打开需点击一次）
+    </div>
+    <!-- 音频已启用提示 -->
+    <div id="audio-enabled-bar"
+        style="display:none; background:#28a745; color:white; padding:8px; text-align:center; font-size:12px;">
+        ✅ 音频提醒已启用
+    </div>
 
-<!-- 强势币通知条 -->
-<div id="strong-notice"></div>
+    <div id="controls">
+        当前时间：<span id="currentTime">--</span>
+        &nbsp;&nbsp;&nbsp;
+        刷新时间：<span id="lastUpdateTime">--</span>
+        <label>刷新间隔（秒）：<input type="number" id="refreshInterval" value="60" min="5" max="600"
+                style="width:50px;"></label>
+        <button onclick="restartAutoRefresh()">应用</button>
+        <button onclick="startTimer()">开始</button>
+        <button onclick="stopTimer()">停止</button>
+        &nbsp;&nbsp;状态：<span id="refreshStatus">正在刷新</span>
+        显示周期：
+        <span id="intervalButtons"></span>
+    </div>
 
-<div id="tables">
-    <div id="change-tables"></div>
-    <div id="amplitude-tables"></div>
-</div>
+    <!-- 强势币通知条 -->
+    <div id="strong-notice"></div>
 
-<audio id="alertSound">
-    <source src="/alert.wav" type="audio/wav">
-</audio>
-<audio id="alertSoundStrong">
-    <source src="/strong.wav" type="audio/wav">
-</audio>
-<audio id="alertError">
-    <source src="/error.wav" type="audio/wav">
-</audio>
-<script>
-    let refreshSeconds = 0.5;
-    let timer = null;
-    const TOP_NUM = 10;
-    const threshold = 4;
-    let errNum = 0;//报错次数统计
+    <div id="tables">
+        <div id="change-tables"></div>
+        <div id="amplitude-tables"></div>
+    </div>
 
-    let lastRankJson = "";
-    let lastStrongJson = "";
+    <audio id="alertSound">
+        <source src="/alert.wav" type="audio/wav">
+    </audio>
+    <audio id="alertSoundStrong">
+        <source src="/strong.wav" type="audio/wav">
+    </audio>
+    <audio id="alertError">
+        <source src="/error.wav" type="audio/wav">
+    </audio>
+    <script>
+        let refreshSeconds = 0.5;
+        let timer = null;
+        const TOP_NUM = 10;
+        const threshold = 4;
+        let errNum = 0;//报错次数统计
 
-    const INTERVALS = ["5m","10m","15m","30m","40m","50m","60m","120m","240m"];
-    const defaultSelected = ["5m","15m","30m"];
+        let lastRankJson = "";
+        let lastStrongJson = "";
 
-    // ------------------- 币种颜色映射配置 (已扩展至 18 种柔和色) -------------------
-    const COLOR_POOL = [
-        "#E3F2FD", // Light Blue
-        "#E8F5E9", // Light Green
-        "#FFF3E0", // Light Orange/Peach
-        "#F3E5F5", // Light Purple
-        "#FCE4EC", // Light Pink
-        "#F0F4C3", // Light Olive
-        "#F5F5F5", // Light Gray
-        "#F5F5FF", // Very Light Lavender
-        "#E0F7FA", // Very Light Cyan
-        "#F9FBE7", // Very Light Yellow/Lime
-        "#E1F5FE", // Another Light Blue
-        "#FFFDE7", // Creamy Yellow
-        "#FFEBEE", // Lighter Pink
-        "#F0F8FF", // AliceBlue
-        "#D1F2EB", // Light Mint
-        "#FADBD8", // Light Rose
-        "#EBF5FB", // Light Steel Blue
-        "#D5F5E3"  // Light Emerald
-    ];
-    const COLOR_CACHE = {}; // 缓存已分配的币种颜色
+        // ------------------- 音频启用机制 -------------------
+        let audioEnabled = false;
+        let audioUnlockListenerAdded = false;
 
-    // 根据币种名称生成一个稳定的、唯一的背景色
-    function getSymbolBackgroundColor(symbol) {
-        if (COLOR_CACHE[symbol]) {
-            return COLOR_CACHE[symbol];
+        // 用户任意点击/触摸页面时自动启用音频
+        function setupAutoUnlock() {
+            if (audioUnlockListenerAdded) return;
+            audioUnlockListenerAdded = true;
+            const unlockAudio = () => {
+                if (audioEnabled) return;
+                enableAudio();
+                document.removeEventListener('click', unlockAudio);
+                document.removeEventListener('touchstart', unlockAudio);
+                document.removeEventListener('keydown', unlockAudio);
+            };
+            document.addEventListener('click', unlockAudio);
+            document.addEventListener('touchstart', unlockAudio);
+            document.addEventListener('keydown', unlockAudio);
+            console.log("🎧 已设置自动音频解锁监听");
         }
 
-        // 简单的字符串哈希算法
-        let hash = 0;
-        for (let i = 0; i < symbol.length; i++) {
-            // 使用位运算生成哈希值
-            hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+        // 检查并显示音频启用提示
+        function checkAudioPermission() {
+            const testAudio = document.getElementById("alertSound");
+            testAudio.volume = 0;
+            const playPromise = testAudio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    testAudio.pause();
+                    testAudio.currentTime = 0;
+                    testAudio.volume = 1;
+                    audioEnabled = true;
+                    document.getElementById("audio-enable-bar").style.display = "none";
+                    document.getElementById("audio-enabled-bar").style.display = "block";
+                    setTimeout(() => { document.getElementById("audio-enabled-bar").style.display = "none"; }, 3000);
+                    console.log("✅ 音频权限已自动获取");
+                }).catch(() => {
+                    testAudio.volume = 1;
+                    audioEnabled = false;
+                    document.getElementById("audio-enable-bar").style.display = "block";
+                    setupAutoUnlock();
+                    console.log("⚠️ 音频被阻止，点击页面任意位置即可启用");
+                });
+            }
         }
 
-        // 将哈希值映射到颜色池的索引
-        const index = Math.abs(hash) % COLOR_POOL.length;
-        const color = COLOR_POOL[index];
+        // 用户点击启用音频
+        function enableAudio() {
+            const audios = [document.getElementById("alertSound"), document.getElementById("alertSoundStrong"), document.getElementById("alertError")];
+            audios.forEach(audio => {
+                audio.volume = 0;
+                audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(() => { });
+            });
+            audioEnabled = true;
+            document.getElementById("audio-enable-bar").style.display = "none";
+            document.getElementById("audio-enabled-bar").style.display = "block";
+            setTimeout(() => {
+                const confirmAudio = document.getElementById("alertSound");
+                confirmAudio.volume = 0.3;
+                confirmAudio.currentTime = 0;
+                confirmAudio.play().catch(() => { });
+            }, 100);
+            setTimeout(() => { document.getElementById("audio-enabled-bar").style.display = "none"; }, 3000);
+            console.log("✅ 音频提醒已手动启用");
+        }
 
-        COLOR_CACHE[symbol] = color; // 缓存结果，确保下次刷新颜色不变
-        return color;
-    }
-
-    let selectedIntervals = JSON.parse(localStorage.getItem("selectedIntervals") || "[]");
-    if(selectedIntervals.length === 0) selectedIntervals = defaultSelected;
-
-    const intervalContainer = document.getElementById("intervalButtons");
-    INTERVALS.forEach(i=>{
-        const btn = document.createElement("button");
-        btn.innerText = i;
-        btn.style.margin = "2px";
-        btn.style.padding = "2px 6px";
-        btn.style.fontSize = "12px";
-        btn.style.border = "1px solid #ccc";
-        btn.style.borderRadius = "4px";
-        btn.style.background = selectedIntervals.includes(i) ? "#0d6efd" : "#fff";
-        btn.style.color = selectedIntervals.includes(i) ? "#fff" : "#000";
-        btn.onclick = () => {
-            if(selectedIntervals.includes(i)){
-                selectedIntervals = selectedIntervals.filter(x=>x!==i);
-                btn.style.background="#fff"; btn.style.color="#000";
-            } else {
-                selectedIntervals.push(i);
-                btn.style.background="#0d6efd"; btn.style.color="#fff";
-            }
-            localStorage.setItem("selectedIntervals", JSON.stringify(selectedIntervals));
-            fetchRankData(true);
-        };
-        intervalContainer.appendChild(btn);
-    });
-
-    // ----------- 涨幅榜刷新 -----------
-    // 新增：根据涨幅数值返回背景色样式的辅助函数
-    function getColorStyle(value) {
-        if (!value) return "";
-        const num = parseFloat(value);
-        if (num > 10) return "background-color: #dc3545; color: white; font-weight: bold;"; // 红色 (>10)
-        if (num > 7)  return "background-color: #fd7e14; color: white; font-weight: bold;"; // 橙色 (>7)
-        if (num > 4)  return "background-color: #ffc107; color: black; font-weight: bold;"; // 黄色 (>4)
-        return ""; // 默认无样式
-    }
-
-    async function fetchRankData(forceUpdate = false) {
-        try {
-            const res = await fetch('/data', {cache: "no-store"});
-            const data = await res.json();
-
-            const currentJson = JSON.stringify(data);
-            if (data["5m"].change.length === 0) {
-                errorAlert();
+        // 安全播放音频（检查是否已启用）
+        function safePlayAudio(audioId, volume = 1) {
+            if (!audioEnabled) {
+                console.log("⚠️ 音频未启用，跳过播放: " + audioId);
+                document.getElementById("audio-enable-bar").style.display = "block";
                 return;
             }
-            if (!forceUpdate && currentJson === lastRankJson) {// 只有非强制刷新才判断
-                errorAlert(100);
-                return;
+            const audio = document.getElementById(audioId);
+            audio.volume = volume;
+            audio.currentTime = 0;
+            audio.play().catch((e) => {
+                console.log("音频播放失败: " + e.message);
+                audioEnabled = false;
+                document.getElementById("audio-enable-bar").style.display = "block";
+            });
+        }
+
+        // 页面加载时检查音频权限
+        window.addEventListener('load', () => { setTimeout(checkAudioPermission, 500); });
+
+        const INTERVALS = ["5m", "10m", "15m", "30m", "40m", "50m", "60m", "120m", "240m"];
+        const defaultSelected = ["5m", "15m", "30m"];
+
+        // ------------------- 币种颜色映射配置 (已扩展至 18 种柔和色) -------------------
+        const COLOR_POOL = [
+            "#E3F2FD", // Light Blue
+            "#E8F5E9", // Light Green
+            "#FFF3E0", // Light Orange/Peach
+            "#F3E5F5", // Light Purple
+            "#FCE4EC", // Light Pink
+            "#F0F4C3", // Light Olive
+            "#F5F5F5", // Light Gray
+            "#F5F5FF", // Very Light Lavender
+            "#E0F7FA", // Very Light Cyan
+            "#F9FBE7", // Very Light Yellow/Lime
+            "#E1F5FE", // Another Light Blue
+            "#FFFDE7", // Creamy Yellow
+            "#FFEBEE", // Lighter Pink
+            "#F0F8FF", // AliceBlue
+            "#D1F2EB", // Light Mint
+            "#FADBD8", // Light Rose
+            "#EBF5FB", // Light Steel Blue
+            "#D5F5E3"  // Light Emerald
+        ];
+        const COLOR_CACHE = {}; // 缓存已分配的币种颜色
+
+        // 根据币种名称生成一个稳定的、唯一的背景色
+        function getSymbolBackgroundColor(symbol) {
+            if (COLOR_CACHE[symbol]) {
+                return COLOR_CACHE[symbol];
             }
-            updateLastChangeTime();
-            lastRankJson = currentJson;
-            console.log("涨幅榜数据更新：", currentJson)
-            let changeHtml = '';
-            errNum = 0;
-            INTERVALS.forEach(interval => {
-                // 1. 过滤和数据检查
-                if (!selectedIntervals.includes(interval)) return; // 未选中，跳过
-                if (!data[interval]) return;
 
-                // 2. 获取 intervalNumber
-                const numberString = interval.replace('m', '');
-                const intervalNumber = parseInt(numberString, 10);
-                const changeList = data[interval].change.slice(0, TOP_NUM);
+            // 简单的字符串哈希算法
+            let hash = 0;
+            for (let i = 0; i < symbol.length; i++) {
+                // 使用位运算生成哈希值
+                hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+            }
 
-                // --- 动态表头逻辑 ---
-                let dynamicHeaderHtml = '';
+            // 将哈希值映射到颜色池的索引
+            const index = Math.abs(hash) % COLOR_POOL.length;
+            const color = COLOR_POOL[index];
 
-                // 在 JavaScript 中进行判断，生成表头字符串
-                if (intervalNumber <= 60) {
-                    dynamicHeaderHtml = `
+            COLOR_CACHE[symbol] = color; // 缓存结果，确保下次刷新颜色不变
+            return color;
+        }
+
+        let selectedIntervals = JSON.parse(localStorage.getItem("selectedIntervals") || "[]");
+        if (selectedIntervals.length === 0) selectedIntervals = defaultSelected;
+
+        const intervalContainer = document.getElementById("intervalButtons");
+        INTERVALS.forEach(i => {
+            const btn = document.createElement("button");
+            btn.innerText = i;
+            btn.style.margin = "2px";
+            btn.style.padding = "2px 6px";
+            btn.style.fontSize = "12px";
+            btn.style.border = "1px solid #ccc";
+            btn.style.borderRadius = "4px";
+            btn.style.background = selectedIntervals.includes(i) ? "#0d6efd" : "#fff";
+            btn.style.color = selectedIntervals.includes(i) ? "#fff" : "#000";
+            btn.onclick = () => {
+                if (selectedIntervals.includes(i)) {
+                    selectedIntervals = selectedIntervals.filter(x => x !== i);
+                    btn.style.background = "#fff"; btn.style.color = "#000";
+                } else {
+                    selectedIntervals.push(i);
+                    btn.style.background = "#0d6efd"; btn.style.color = "#fff";
+                }
+                localStorage.setItem("selectedIntervals", JSON.stringify(selectedIntervals));
+                fetchRankData(true);
+            };
+            intervalContainer.appendChild(btn);
+        });
+
+        // ----------- 涨幅榜刷新 -----------
+        // 新增：根据涨幅数值返回背景色样式的辅助函数
+        function getColorStyle(value) {
+            if (!value) return "";
+            const num = parseFloat(value);
+            if (num > 10) return "background-color: #dc3545; color: white; font-weight: bold;"; // 红色 (>10)
+            if (num > 7) return "background-color: #fd7e14; color: white; font-weight: bold;"; // 橙色 (>7)
+            if (num > 4) return "background-color: #ffc107; color: black; font-weight: bold;"; // 黄色 (>4)
+            return ""; // 默认无样式
+        }
+
+        async function fetchRankData(forceUpdate = false) {
+            try {
+                const res = await fetch('/data', { cache: "no-store" });
+                const data = await res.json();
+
+                const currentJson = JSON.stringify(data);
+                if (data["5m"].change.length === 0) {
+                    errorAlert();
+                    return;
+                }
+                if (!forceUpdate && currentJson === lastRankJson) {// 只有非强制刷新才判断
+                    errorAlert(100);
+                    return;
+                }
+                updateLastChangeTime();
+                lastRankJson = currentJson;
+                console.log("涨幅榜数据更新：", currentJson)
+                let changeHtml = '';
+                errNum = 0;
+                INTERVALS.forEach(interval => {
+                    // 1. 过滤和数据检查
+                    if (!selectedIntervals.includes(interval)) return; // 未选中，跳过
+                    if (!data[interval]) return;
+
+                    // 2. 获取 intervalNumber
+                    const numberString = interval.replace('m', '');
+                    const intervalNumber = parseInt(numberString, 10);
+                    const changeList = data[interval].change.slice(0, TOP_NUM);
+
+                    // --- 动态表头逻辑 ---
+                    let dynamicHeaderHtml = '';
+
+                    // 在 JavaScript 中进行判断，生成表头字符串
+                    if (intervalNumber <= 60) {
+                        dynamicHeaderHtml = `
                     <th>60分涨幅(%)</th>
                     <th>60分振幅(%)</th>
                 `;
-                } else {
-                    dynamicHeaderHtml = `
+                    } else {
+                        dynamicHeaderHtml = `
                     <th>${intervalNumber}分涨幅(%)</th>
                     <th>${intervalNumber}分振幅(%)</th>
                 `;
-                }
+                    }
 
-                // 3. 拼接表格开始部分（包含动态表头）
-                changeHtml += `<div class="table-container">
+                    // 3. 拼接表格开始部分（包含动态表头）
+                    changeHtml += `<div class="table-container">
                 <h2>${interval} K 线 Top ${TOP_NUM} 涨幅</h2>
                 <table>
                     <tr>
@@ -203,36 +367,36 @@
                         ${dynamicHeaderHtml} <th>收盘</th>
                     </tr>`;
 
-                // 4. 遍历表格行数据
-                changeList.forEach((c, i) => {
-                    // 🌟 获取该币种的稳定背景色
-                    const rowBgColor = getSymbolBackgroundColor(c.symbol);
+                    // 4. 遍历表格行数据
+                    changeList.forEach((c, i) => {
+                        // 🌟 获取该币种的稳定背景色
+                        const rowBgColor = getSymbolBackgroundColor(c.symbol);
 
-                    // 获取 5分钟涨幅的数据
-                    const change5m = c.others && c.others['5m'] ? c.others['5m'].change : 0;
-                    // 计算 5分钟这一格的样式
-                    const style5m = getColorStyle(change5m);
+                        // 获取 5分钟涨幅的数据
+                        const change5m = c.others && c.others['5m'] ? c.others['5m'].change : 0;
+                        // 计算 5分钟这一格的样式
+                        const style5m = getColorStyle(change5m);
 
-                    // --- 动态行数据逻辑 ---
-                    let dynamicRowDataHtml = '';
+                        // --- 动态行数据逻辑 ---
+                        let dynamicRowDataHtml = '';
 
-                    // 在 JavaScript 中进行判断，生成行数据字符串
-                    if (intervalNumber <= 60) {
-                        // 引用 '60m' 的数据
-                        dynamicRowDataHtml = `
+                        // 在 JavaScript 中进行判断，生成行数据字符串
+                        if (intervalNumber <= 60) {
+                            // 引用 '60m' 的数据
+                            dynamicRowDataHtml = `
                         <td>${c.others && c.others['60m'] ? c.others['60m'].change.toFixed(2) : '-'}</td>
                         <td>${c.others && c.others['60m'] ? c.others['60m'].amplitude.toFixed(2) : '-'}</td>
                     `;
-                    } else {
-                        // 引用当前 interval (如 '120m') 的数据
-                        dynamicRowDataHtml = `
+                        } else {
+                            // 引用当前 interval (如 '120m') 的数据
+                            dynamicRowDataHtml = `
                         <td>${c.others && c.others[interval] ? c.others[interval].change.toFixed(2) : '-'}</td>
                         <td>${c.others && c.others[interval] ? c.others[interval].amplitude.toFixed(2) : '-'}</td>
                     `;
-                    }
+                        }
 
-                    // 5. 拼接完整的表格行
-                    changeHtml += `<tr style="background-color: ${rowBgColor};">
+                        // 5. 拼接完整的表格行
+                        changeHtml += `<tr style="background-color: ${rowBgColor};">
                     <td>${i + 1}</td>
                     <td>${c.symbol}</td>
 
@@ -246,133 +410,123 @@
 
                     ${dynamicRowDataHtml} <td>${c.close.toFixed(5)}</td>
                 </tr>`;
+                    });
+
+                    // 6. 拼接表格结束标签
+                    changeHtml += `</table></div>`;
                 });
 
-                // 6. 拼接表格结束标签
-                changeHtml += `</table></div>`;
-            });
+                document.getElementById('change-tables').innerHTML = changeHtml;
 
-            document.getElementById('change-tables').innerHTML = changeHtml;
+                // 涨幅提醒
+                if (data["5m"]) {
+                    const list5m = data["5m"].change;
 
-            // 涨幅提醒
-            if (data["5m"]) {
-                const list5m = data["5m"].change;
-
-                const maxChange = Math.max(...list5m.map(c => Number(c.change)));
-                if (maxChange >= threshold) {
-                    const audio = document.getElementById("alertSound");
-                    audio.volume = 1;
-                    audio.currentTime = 0;
-                    audio.play().catch(() => {
-                    });
-                    console.log("涨幅超过阈值，已提醒一次！");
+                    const maxChange = Math.max(...list5m.map(c => Number(c.change)));
+                    if (maxChange >= threshold) {
+                        safePlayAudio("alertSound", 1);
+                        console.log("涨幅超过阈值，已提醒一次！");
+                    }
                 }
-            }
 
-        } catch (err) {
-            errorAlert();
-            console.error("数据刷新错误：", err);
+            } catch (err) {
+                errorAlert();
+                console.error("数据刷新错误：", err);
+            }
         }
-    }
 
-    // ----------- 强势币通知条刷新 -----------
-    async function fetchStrongData() {
-        try{
-            const res = await fetch('/strong', { cache: "no-store" });
-            const data = await res.json();
+        // ----------- 强势币通知条刷新 -----------
+        async function fetchStrongData() {
+            try {
+                const res = await fetch('/strong', { cache: "no-store" });
+                const data = await res.json();
 
-            const currentJson = JSON.stringify(data);
-            if(currentJson === lastStrongJson) return;
-            lastStrongJson = currentJson;
-            console.log("强势币数据更新：",currentJson)
-            const container = document.getElementById('strong-notice');
-            container.innerHTML = data.map(c => `<span class="strong-coin">${c.symbol}</span>`).join(' ');
+                const currentJson = JSON.stringify(data);
+                if (currentJson === lastStrongJson) return;
+                lastStrongJson = currentJson;
+                console.log("强势币数据更新：", currentJson)
+                const container = document.getElementById('strong-notice');
+                container.innerHTML = data.map(c => `<span class="strong-coin">${c.symbol}</span>`).join(' ');
 
-            if(data.length > 0){
-                const audio = document.getElementById("alertSoundStrong");
-                audio.volume = 1;
-                audio.currentTime = 0;
-                audio.play().catch(()=>{});
-                console.log("发现新的强势币，已播放提醒音");
-            }
+                if (data.length > 0) {
+                    safePlayAudio("alertSoundStrong", 1);
+                    console.log("发现新的强势币，已播放提醒音");
+                }
 
-        } catch(err){ console.error("强势币刷新错误：", err); }
-    }
+            } catch (err) { console.error("强势币刷新错误：", err); }
+        }
 
-    // ----------- 定时刷新 -----------
-    function startTimer(){
-        if(timer) clearInterval(timer);
-        timer = setInterval(()=>{
+        // ----------- 定时刷新 -----------
+        function startTimer() {
+            if (timer) clearInterval(timer);
+            timer = setInterval(() => {
+                fetchRankData();
+                fetchStrongData();
+            }, refreshSeconds * 1000);
+            document.getElementById('refreshStatus').innerText = "正在刷新";
+            document.getElementById('refreshStatus').style.color = "green";
+            console.log("自动刷新已启动，间隔:", refreshSeconds, "秒");
             fetchRankData();
             fetchStrongData();
-        }, refreshSeconds*1000);
-        document.getElementById('refreshStatus').innerText = "正在刷新";
-        document.getElementById('refreshStatus').style.color = "green";
-        console.log("自动刷新已启动，间隔:", refreshSeconds,"秒");
-        fetchRankData();
-        fetchStrongData();
-    }
-
-    function stopTimer(){
-        if(timer){
-            clearInterval(timer);
-            timer=null;
-            document.getElementById('refreshStatus').innerText = "已停止刷新";
-            document.getElementById('refreshStatus').style.color = "red";
-            console.log("自动刷新已停止");
         }
-    }
 
-    function restartAutoRefresh(){
-        const v = parseInt(document.getElementById('refreshInterval').value);
-        if(!isNaN(v) && v>=5 && v<=600) refreshSeconds = v;
+        function stopTimer() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+                document.getElementById('refreshStatus').innerText = "已停止刷新";
+                document.getElementById('refreshStatus').style.color = "red";
+                console.log("自动刷新已停止");
+            }
+        }
+
+        function restartAutoRefresh() {
+            const v = parseInt(document.getElementById('refreshInterval').value);
+            if (!isNaN(v) && v >= 5 && v <= 600) refreshSeconds = v;
+            startTimer();
+        }
+        // 数据发生变化 → 记录更新时间
+        function updateLastChangeTime() {
+            const now = new Date();
+            const pad = n => (n < 10 ? "0" + n : n);
+            const str =
+                now.getFullYear() + "-" +
+                pad(now.getMonth() + 1) + "-" +
+                pad(now.getDate()) + " " +
+                pad(now.getHours()) + ":" +
+                pad(now.getMinutes()) + ":" +
+                pad(now.getSeconds());
+
+            document.getElementById("lastUpdateTime").innerText = str;
+        }
+
+        function updateCurrentTime() {
+            const now = new Date();
+            const pad = n => (n < 10 ? "0" + n : n);
+            const str =
+                now.getFullYear() + "-" +
+                pad(now.getMonth() + 1) + "-" +
+                pad(now.getDate()) + " " +
+                pad(now.getHours()) + ":" +
+                pad(now.getMinutes()) + ":" +
+                pad(now.getSeconds());
+
+            document.getElementById("currentTime").innerText = str;
+        }
+
+        function errorAlert(MAX_NUM = 20) {
+            errNum++;
+            if (errNum >= MAX_NUM) {
+                safePlayAudio("alertError", 1);
+                errNum = 0;
+                console.log("数据刷新失败，请检查网络连接或联系管理员！");
+            }
+        }
+
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
         startTimer();
-    }
-    // 数据发生变化 → 记录更新时间
-    function updateLastChangeTime() {
-        const now = new Date();
-        const pad = n => (n < 10 ? "0" + n : n);
-        const str =
-            now.getFullYear() + "-" +
-            pad(now.getMonth() + 1) + "-" +
-            pad(now.getDate()) + " " +
-            pad(now.getHours()) + ":" +
-            pad(now.getMinutes()) + ":" +
-            pad(now.getSeconds());
-
-        document.getElementById("lastUpdateTime").innerText = str;
-    }
-
-    function updateCurrentTime() {
-        const now = new Date();
-        const pad = n => (n < 10 ? "0" + n : n);
-        const str =
-            now.getFullYear() + "-" +
-            pad(now.getMonth() + 1) + "-" +
-            pad(now.getDate()) + " " +
-            pad(now.getHours()) + ":" +
-            pad(now.getMinutes()) + ":" +
-            pad(now.getSeconds());
-
-        document.getElementById("currentTime").innerText = str;
-    }
-
-    function errorAlert(MAX_NUM=20){
-        errNum++;
-        if (errNum >= MAX_NUM) {
-            const audio = document.getElementById("alertError");
-            audio.volume = 1;
-            audio.currentTime = 0;
-            audio.play().catch(() => {
-            });
-            errNum=0;
-            console.log("数据刷新失败，请检查网络连接或联系管理员！");
-        }
-    }
-
-    setInterval(updateCurrentTime, 1000);
-    updateCurrentTime();
-    startTimer();
-</script>
+    </script>
 </body>
+
 </html>
