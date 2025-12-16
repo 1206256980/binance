@@ -17,8 +17,8 @@ public class BinanceCombinedServer {
     // ------------------- 公共配置 -------------------
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
-    private static final int THREADS = 100;
-    private static final int DEFAULT_REFRESH_SECONDS = 20;
+    private static final int THREADS = 50;
+    private static final int DEFAULT_REFRESH_SECONDS = 35;
     private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m","120m","240m"};
     private static final int TOP_CHANGE = 20;
     private static final int TOP_AMPLITUDE = 20;
@@ -111,7 +111,6 @@ public class BinanceCombinedServer {
 
     public static void main(String[] args) throws Exception {
         initProxy();
-        loadIndexHistory(); // 🌟 启动时加载历史数据
         Spark.port(4567);
         Spark.staticFiles.location("/public");
 
@@ -164,27 +163,6 @@ public class BinanceCombinedServer {
         System.out.println("全部请求完成，耗时：" + used + "ms");
 
         klineCache = newKlineCache;
-
-        // ---------------- 🌟 指数计算频率控制 🌟 ----------------
-        long now = System.currentTimeMillis();
-
-        // 判断是否超过 3 分钟的计算间隔
-        if (now - lastIndexCalculationTime >= INDEX_CALCULATION_INTERVAL_MS) {
-
-            System.out.println("--- Starting 3-minute Alt Index calculation ---");
-            // 调用指数计算函数
-            BigDecimal altFuturesIndex = calculateAltFuturesIndex(klineCache);
-
-            // 指数计算完成后，保存到历史缓存和本地文件
-            if (altFuturesIndex != null) {
-                IndexPoint newPoint = new IndexPoint(now, altFuturesIndex);
-                saveIndexPoint(newPoint);
-                System.out.println("Alt Index calculated and saved: " + newPoint.value.toPlainString());
-            }
-
-            // 更新上次计算时间，确保下次计算至少在 3 分钟之后
-            lastIndexCalculationTime = now;
-        }
 
         // ---------------- 排行榜逻辑 ---------------- (代码保持不变，省略以保持简洁，但请在您的文件中保留)
         // ... (原有的排行榜逻辑)
@@ -287,7 +265,7 @@ public class BinanceCombinedServer {
 
             // 组合一判断
             if (posRatio.compareTo(new BigDecimal("0.7")) >= 0 &&
-                    cumChange.compareTo(new BigDecimal("8")) >= 0) {
+                    cumChange.compareTo(new BigDecimal("9")) >= 0) {
                 isComboOne = true;
                 System.out.println("强势币："+symbol+",区间百分比:"+posRatio+"，累计涨幅："+cumChange);
             }
@@ -339,132 +317,6 @@ public class BinanceCombinedServer {
         strongCache = strongs;
     }
 
-
-    // ------------------- 新增：AltFuturesIndex 计算函数 -------------------
-
-    private static BigDecimal calculateAltFuturesIndex(Map<String, List<CandleRaw>> klineMap) {
-        List<IndexData> indexDataList = new ArrayList<>();
-
-        // 1. 数据收集与预计算 (遍历所有 altcoin，计算 30m 交易额和涨跌幅)
-        for (Map.Entry<String, List<CandleRaw>> entry : klineMap.entrySet()) {
-            String symbol = entry.getKey();
-
-            // 排除 BTC 和 ETH
-            if (symbol.equals("BTCUSDT") || symbol.equals("ETHUSDT")) {
-                continue;
-            }
-
-            List<CandleRaw> rawsAll = entry.getValue();
-            if (rawsAll == null || rawsAll.size() < INDEX_KLINE_COUNT) {
-                continue;
-            }
-            List<CandleRaw> lastN = rawsAll.subList(rawsAll.size() - INDEX_KLINE_COUNT, rawsAll.size());
-
-            // 30m 总成交额 (Sum of Volume * Close over 6 candles)
-            BigDecimal totalTradeValue = lastN.stream()
-                    .map(c -> c.volume.multiply(c.close))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // 30m 价格变动 Delta P_i (累计涨跌幅百分比)
-            BigDecimal firstOpen = lastN.get(0).open;
-            BigDecimal lastClose = lastN.get(INDEX_KLINE_COUNT - 1).close;
-            BigDecimal deltaP = BigDecimal.ZERO;
-
-            if (firstOpen.compareTo(BigDecimal.ZERO) > 0) {
-                deltaP = lastClose.subtract(firstOpen)
-                        .multiply(new BigDecimal("100"))
-                        .divide(firstOpen, 4, RoundingMode.HALF_UP);
-            }
-
-            indexDataList.add(new IndexData(symbol, deltaP, totalTradeValue));
-        }
-
-        // 2. 筛选与排序: 按 30m 总成交额降序，选取 Top 50
-        List<IndexData> topNIndexData = indexDataList.stream()
-                // 排序依据：tradeValue 降序
-                .sorted(Comparator.comparing(d -> d.tradeValue, Comparator.reverseOrder()))
-                .limit(INDEX_POOL_SIZE) // 截取 Top 50
-                .collect(Collectors.toList());
-
-        if (topNIndexData.isEmpty()) return BigDecimal.ZERO;
-
-        // 3. 指数计算 (成交额加权平均)
-        BigDecimal altFuturesIndex = BigDecimal.ZERO;
-
-        // 计算 Top N 池的总成交额 (Sum V_j)
-        BigDecimal poolTotalTradeValue = topNIndexData.stream()
-                .map(d -> d.tradeValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // 计算加权指数
-        if (poolTotalTradeValue.compareTo(BigDecimal.ZERO) > 0) {
-            for (IndexData data : topNIndexData) {
-                // 权重 W_i = V_i / Sum(V_j)
-                BigDecimal weight = data.tradeValue.divide(poolTotalTradeValue, 8, RoundingMode.HALF_UP);
-
-                // 加权变动 = W_i * Delta P_i
-                BigDecimal weightedChange = weight.multiply(data.change);
-
-                altFuturesIndex = altFuturesIndex.add(weightedChange);
-            }
-            return altFuturesIndex;
-        }
-
-        return BigDecimal.ZERO;
-    }
-
-    // ------------------- 新增：指数历史数据处理 -------------------
-
-    /**
-     * 将最新的指数点保存到缓存和本地文件
-     */
-    private static synchronized void saveIndexPoint(IndexPoint point) {
-        indexHistoryCache.add(point);
-        // 保持缓存数据量在一个合理范围
-        if (indexHistoryCache.size() > 1000) {
-            indexHistoryCache.remove(0);
-        }
-
-        // 🌟 关键修改：在写入文件前，检查并创建父目录 (public)
-        File file = new File(INDEX_FILE_PATH);
-        File parentDir = file.getParentFile();
-
-        // 确保父目录存在，如果不存在则创建
-        if (parentDir != null && !parentDir.exists()) {
-            parentDir.mkdirs();
-        }
-
-        // 写入本地文件
-        try (FileWriter writer = new FileWriter(file)) {
-            new Gson().toJson(indexHistoryCache, writer);
-        } catch (Exception e) {
-            System.err.println("Failed to write index history to file: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 启动时从本地文件加载历史指数数据
-     */
-    private static void loadIndexHistory() {
-        File file = new File(INDEX_FILE_PATH);
-        if (!file.exists()) {
-            System.out.println("Index history file not found, starting with empty history.");
-            return;
-        }
-
-        try (FileReader reader = new FileReader(file)) {
-            Gson gson = new Gson();
-            // 使用 TypeToken 或直接使用 List<IndexPoint>.class (如果结构简单)
-            IndexPoint[] historyArray = gson.fromJson(reader, IndexPoint[].class);
-            if (historyArray != null) {
-                indexHistoryCache = new ArrayList<>(Arrays.asList(historyArray));
-                System.out.println("Loaded " + indexHistoryCache.size() + " index points from file.");
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to load index history: " + e.getMessage());
-            indexHistoryCache = new ArrayList<>(); // 加载失败，清空缓存
-        }
-    }
 
 
     // ------------------- 工具方法 -------------------
