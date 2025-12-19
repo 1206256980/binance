@@ -8,6 +8,7 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -365,7 +366,7 @@ public class BinanceCombinedServer {
     private static List<CandleRaw> fetch5mKlines(String symbol, int limit) {
         try {
             long start = System.currentTimeMillis();
-            String url = KLINES_URL + "?symbol=" + symbol + "&interval=5m&limit=" + limit;
+            String url = KLINES_URL + "?symbol=" + URLEncoder.encode(symbol, "UTF-8") + "&interval=5m&limit=" + limit;
             String json = httpGet(url);
             long end = System.currentTimeMillis() - start;
             if (count % 300 == 0) {// 每三百次请求打一次日志
