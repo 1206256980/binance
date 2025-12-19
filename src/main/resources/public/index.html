@@ -80,6 +80,17 @@
             color: #d63384;
             font-weight: bold;
         }
+
+        /* 突出显示当前周期的列 */
+        .highlight-column {
+            background-color: #d4edff !important;
+            border: 2px solid #0d6efd !important;
+            font-weight: bold;
+        }
+
+        th.highlight-column {
+            background-color: #a8d4ff !important;
+        }
     </style>
 </head>
 
@@ -355,16 +366,36 @@
                 `;
                     }
 
-                    // 3. 拼接表格开始部分（包含动态表头）
+                    // 3. 确定当前周期要高亮的列
+                    // 根据 intervalNumber 判断高亮哪个周期（映射到表格中实际存在的列）
+                    let highlightInterval = interval; // 默认高亮当前周期
+                    if (intervalNumber === 5) highlightInterval = '5m';
+                    else if (intervalNumber === 10) highlightInterval = '5m'; // 10m 没有单独列，高亮最近的 5m
+                    else if (intervalNumber === 15) highlightInterval = '15m';
+                    else if (intervalNumber === 30 || intervalNumber === 40 || intervalNumber === 50) highlightInterval = '30m';
+                    else if (intervalNumber === 60) highlightInterval = '60m';
+                    else if (intervalNumber === 120) highlightInterval = '120m';
+                    else if (intervalNumber === 240) highlightInterval = '240m';
+
+                    // 4. 拼接表格开始部分（包含动态表头，并高亮当前周期的表头）
                     changeHtml += `<div class="table-container">
                 <h2>${interval} K 线 Top ${TOP_NUM} 涨幅</h2>
                 <table>
                     <tr>
                         <th>排名</th><th>交易对</th>
-                        <th>5分涨幅(%)</th><th>5分振幅(%)</th>
-                        <th>15分涨幅(%)</th><th>15分振幅(%)</th>
-                        <th>30分涨幅(%)</th><th>30分振幅(%)</th>
-                        ${dynamicHeaderHtml} <th>收盘</th>
+                        <th class="${highlightInterval === '5m' ? 'highlight-column' : ''}">5分涨幅(%)</th>
+                        <th class="${highlightInterval === '5m' ? 'highlight-column' : ''}">5分振幅(%)</th>
+                        <th class="${highlightInterval === '15m' ? 'highlight-column' : ''}">15分涨幅(%)</th>
+                        <th class="${highlightInterval === '15m' ? 'highlight-column' : ''}">15分振幅(%)</th>
+                        <th class="${highlightInterval === '30m' ? 'highlight-column' : ''}">30分涨幅(%)</th>
+                        <th class="${highlightInterval === '30m' ? 'highlight-column' : ''}">30分振幅(%)</th>
+                        ${intervalNumber <= 60 ?
+                            `<th class="${highlightInterval === '60m' ? 'highlight-column' : ''}">60分涨幅(%)</th>
+                             <th class="${highlightInterval === '60m' ? 'highlight-column' : ''}">60分振幅(%)</th>` :
+                            `<th class="${highlightInterval === interval ? 'highlight-column' : ''}">${intervalNumber}分涨幅(%)</th>
+                             <th class="${highlightInterval === interval ? 'highlight-column' : ''}">${intervalNumber}分振幅(%)</th>`
+                        }
+                        <th>收盘</th>
                     </tr>`;
 
                     // 4. 遍历表格行数据
@@ -395,20 +426,26 @@
                     `;
                         }
 
-                        // 5. 拼接完整的表格行
+                        // 5. 拼接完整的表格行，高亮当前周期的数据列
                         changeHtml += `<tr style="background-color: ${rowBgColor};">
                     <td>${i + 1}</td>
                     <td>${c.symbol}</td>
 
-                    <td style="${style5m}">${change5m ? Number(change5m).toFixed(2) : '-'}</td>
-                    <td>${c.others && c.others['5m'] ? c.others['5m'].amplitude.toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '5m' ? 'highlight-column' : ''}" style="${style5m}">${change5m ? Number(change5m).toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '5m' ? 'highlight-column' : ''}">${c.others && c.others['5m'] ? c.others['5m'].amplitude.toFixed(2) : '-'}</td>
 
-                    <td>${c.others && c.others['15m'] ? c.others['15m'].change.toFixed(2) : '-'}</td>
-                    <td>${c.others && c.others['15m'] ? c.others['15m'].amplitude.toFixed(2) : '-'}</td>
-                    <td>${c.others && c.others['30m'] ? c.others['30m'].change.toFixed(2) : '-'}</td>
-                    <td>${c.others && c.others['30m'] ? c.others['30m'].amplitude.toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '15m' ? 'highlight-column' : ''}">${c.others && c.others['15m'] ? c.others['15m'].change.toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '15m' ? 'highlight-column' : ''}">${c.others && c.others['15m'] ? c.others['15m'].amplitude.toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '30m' ? 'highlight-column' : ''}">${c.others && c.others['30m'] ? c.others['30m'].change.toFixed(2) : '-'}</td>
+                    <td class="${highlightInterval === '30m' ? 'highlight-column' : ''}">${c.others && c.others['30m'] ? c.others['30m'].amplitude.toFixed(2) : '-'}</td>
 
-                    ${dynamicRowDataHtml} <td>${c.close.toFixed(5)}</td>
+                    ${intervalNumber <= 60 ?
+                                `<td class="${highlightInterval === '60m' ? 'highlight-column' : ''}">${c.others && c.others['60m'] ? c.others['60m'].change.toFixed(2) : '-'}</td>
+                         <td class="${highlightInterval === '60m' ? 'highlight-column' : ''}">${c.others && c.others['60m'] ? c.others['60m'].amplitude.toFixed(2) : '-'}</td>` :
+                                `<td class="${highlightInterval === interval ? 'highlight-column' : ''}">${c.others && c.others[interval] ? c.others[interval].change.toFixed(2) : '-'}</td>
+                         <td class="${highlightInterval === interval ? 'highlight-column' : ''}">${c.others && c.others[interval] ? c.others[interval].amplitude.toFixed(2) : '-'}</td>`
+                            }
+                    <td>${c.close.toFixed(5)}</td>
                 </tr>`;
                     });
 
