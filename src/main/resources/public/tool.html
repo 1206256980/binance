@@ -243,6 +243,15 @@
         let dcaRows = [];
         let rowIdCounter = 0;
 
+        // 获取数字的小数位数
+        function getDecimalPlaces(numStr) {
+            if (!numStr || numStr === '') return 4; // 默认4位
+            const str = numStr.toString();
+            const dotIndex = str.indexOf('.');
+            if (dotIndex === -1) return 0;
+            return str.length - dotIndex - 1;
+        }
+
         function addDCARow() {
             const id = rowIdCounter++;
             dcaRows.push({ id, rise: '', price: '', position: '' });
@@ -258,7 +267,9 @@
         function renderDCATable() {
             const tbody = document.getElementById('dcaTableBody');
             tbody.innerHTML = '';
-            const basePrice = parseFloat(document.getElementById('basePrice').value);
+            const basePriceInput = document.getElementById('basePrice').value;
+            const basePrice = parseFloat(basePriceInput);
+            const priceDecimals = getDecimalPlaces(basePriceInput);
 
             dcaRows.forEach((row, index) => {
                 const tr = document.createElement('tr');
@@ -275,7 +286,7 @@
                     if (row.rise !== '' && row.price === '') {
                         const rise = parseFloat(row.rise);
                         if (!isNaN(rise)) {
-                            displayPrice = (basePrice * (1 + rise / 100)).toFixed(4);
+                            displayPrice = (basePrice * (1 + rise / 100)).toFixed(priceDecimals);
                         }
                     } else if (row.price !== '' && row.rise === '') {
                         const price = parseFloat(row.price);
