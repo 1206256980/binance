@@ -216,7 +216,7 @@
                                 <th style="padding: 8px; border: 1px solid #ddd;">累计仓位</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">当前亏损%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">当前亏损</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
                             </tr>
                         </thead>
@@ -426,18 +426,21 @@
 
                     // 成本价 = 总投入 / 真实仓位 * 当前价格
                     const avgPrice = (totalCost / realPosition) * price;
-                    // 当前亏损 = (真实仓位 - 总投入) / 总投入
-                    const currLoss = ((realPosition - totalCost) / totalCost) * 100;
+                    // 当前亏损U = 真实仓位 - 总投入
+                    const currLossU = realPosition - totalCost;
+                    // 当前亏损% = (真实仓位 - 总投入) / 总投入
+                    const currLossPercent = (currLossU / totalCost) * 100;
 
                     if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
-                    if (currLossEl) currLossEl.textContent = currLoss.toFixed(2) + '%';
+                    if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
                 } else {
                     // 没有仓位时，只要有价格和之前有仓位，就显示当前亏损
                     if (realPosition > 0 && !isNaN(price)) {
                         // 更新仓位价值
-                        const currLoss = ((realPosition - totalCost) / totalCost) * 100;
-                        if (currLossEl) currLossEl.textContent = currLoss.toFixed(2) + '%';
+                        const currLossU = realPosition - totalCost;
+                        const currLossPercent = (currLossU / totalCost) * 100;
+                        if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
                         if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     } else {
                         if (currLossEl) currLossEl.textContent = '-';
