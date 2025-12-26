@@ -141,13 +141,6 @@ public class BinanceCombinedServer {
                     .toJson(strongCache.stream().map(StrongCoin::new).collect(Collectors.toList()));
         });
 
-        // 🌟 新增 API 接口：获取指数历史数据
-        Spark.get("/index_history", (req, res) -> {
-            res.type("application/json; charset=UTF-8");
-            List<IndexPoint> collect = indexHistoryCache.stream()
-                    .sorted(Comparator.comparing(IndexPoint::getTimestamp).reversed()).collect(Collectors.toList());
-            return new Gson().toJson(collect);
-        });
     }
 
     // ------------------- 刷新逻辑 -------------------

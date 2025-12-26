@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,17 +13,21 @@
             padding: 20px;
             background-color: #f4f4f9;
             color: #333;
-            box-sizing: border-box; /* 确保 padding 包含在 body 宽度内 */
+            box-sizing: border-box;
+            /* 确保 padding 包含在 body 宽度内 */
         }
+
         .container {
             width: 100%;
             margin: 0 auto;
             background: white;
-            padding: 20px 20px 0 20px; /* 底部不留 padding, 间距由 tools-grid 决定 */
+            padding: 20px 20px 0 20px;
+            /* 底部不留 padding, 间距由 tools-grid 决定 */
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             box-sizing: border-box;
         }
+
         h1 {
             color: #17a2b8;
             text-align: center;
@@ -32,8 +37,10 @@
         .tools-grid {
             display: flex;
             flex-wrap: wrap;
-            margin-left: -10px; /* 抵消左侧间距 */
-            margin-right: -10px; /* 抵消右侧间距 */
+            margin-left: -10px;
+            /* 抵消左侧间距 */
+            margin-right: -10px;
+            /* 抵消右侧间距 */
             margin-bottom: 20px;
         }
 
@@ -45,8 +52,10 @@
             margin-bottom: 20px;
 
             /* 关键修改 2: 确保计算后的宽度能稳定占据 1/3，并阻止被压缩 */
-            flex: 0 0 calc(33.333333% - 20px); /* 减去 左右 10px margin，共 20px */
-            min-width: 280px; /* 设置一个合理的最小宽度 */
+            flex: 0 0 calc(33.333333% - 20px);
+            /* 减去 左右 10px margin，共 20px */
+            min-width: 280px;
+            /* 设置一个合理的最小宽度 */
 
             padding: 15px;
             border: 1px solid #ddd;
@@ -69,15 +78,18 @@
             margin-bottom: 15px;
             font-size: 1.2em;
         }
+
         .input-group {
             margin-bottom: 10px;
         }
+
         .input-group label {
             display: block;
             margin-bottom: 3px;
             font-weight: bold;
             font-size: 0.9em;
         }
+
         .input-group input[type="number"] {
             width: 100%;
             padding: 8px;
@@ -85,6 +97,7 @@
             border-radius: 4px;
             box-sizing: border-box;
         }
+
         .result {
             margin-top: 15px;
             padding: 10px;
@@ -96,12 +109,15 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
+
         .result:hover {
             background-color: #d1e2f0;
         }
+
         .result span {
             color: #dc3545;
         }
+
         .copy-hint {
             font-size: 0.75em;
             color: #6c757d;
@@ -122,134 +138,452 @@
             opacity: 0;
             transition: opacity 0.5s ease-in-out;
         }
+
         .visible {
             opacity: 1 !important;
         }
     </style>
 </head>
+
 <body>
 
-<div class="container">
+    <div class="container">
 
-    <div id="copyMessage">✅ 已复制到剪贴板！</div>
+        <div id="copyMessage">✅ 已复制到剪贴板！</div>
 
-    <div class="tools-grid">
+        <div class="tools-grid">
 
-        <div class="calculator-section">
-            <h2>1. 📈 价格百分比变化</h2>
-            <p style="font-size: 0.8em; color: #6c757d;">公式：$((结束价 - 起始价) / 起始价) \times 100\%$</p>
+            <div class="calculator-section">
+                <h2>1. 📈 价格百分比变化</h2>
+                <p style="font-size: 0.8em; color: #6c757d;">公式：$((结束价 - 起始价) / 起始价) \times 100\%$</p>
 
-            <div class="input-group">
-                <label for="startPrice">起始价：</label>
-                <input type="number" id="startPrice" placeholder="如 0.4974" oninput="calculatePercentageChange()">
+                <div class="input-group">
+                    <label for="startPrice">起始价：</label>
+                    <input type="number" id="startPrice" placeholder="如 0.4974" oninput="calculatePercentageChange()">
+                </div>
+
+                <div class="input-group">
+                    <label for="endPrice">结束价：</label>
+                    <input type="number" id="endPrice" placeholder="如 0.5011" oninput="calculatePercentageChange()">
+                </div>
+
+                <div class="result" onclick="copyResult('percentageChangeResult')">
+                    变化：<span id="percentageChangeResult"></span>
+                    <span class="copy-hint">(点击复制)</span>
+                </div>
             </div>
 
-            <div class="input-group">
-                <label for="endPrice">结束价：</label>
-                <input type="number" id="endPrice" placeholder="如 0.5011" oninput="calculatePercentageChange()">
+            <div class="calculator-section">
+                <h2>2. 💰 价格百分比调整</h2>
+                <p style="font-size: 0.8em; color: #6c757d;">公式：$价格 \times (1 + 百分比)$</p>
+                <p style="font-size: 0.7em; color: #6c757d;">(百分比请按整数输入，如 5 或 -2)</p>
+
+                <div class="input-group">
+                    <label for="originalPrice">输入价格：</label>
+                    <input type="number" id="originalPrice" placeholder="请输入原始价格" oninput="calculateAdjustedPrice()">
+                </div>
+
+                <div class="input-group">
+                    <label for="percentage">调整百分比 (%)：</label>
+                    <input type="number" id="percentage" placeholder="请输入百分比" oninput="calculateAdjustedPrice()">
+                </div>
+
+                <div class="result" onclick="copyResult('adjustedPriceResult')">
+                    结果：<span id="adjustedPriceResult"></span>
+                    <span class="copy-hint">(点击复制)</span>
+                </div>
             </div>
 
-            <div class="result" onclick="copyResult('percentageChangeResult')">
-                变化：<span id="percentageChangeResult"></span>
-                <span class="copy-hint">(点击复制)</span>
+            <div class="calculator-section" style="flex: 0 0 calc(100% - 20px); min-width: 100%;">
+                <h2>3. 📊 马丁补仓计算器</h2>
+                <p style="font-size: 0.8em; color: #6c757d;">输入起始价和每次补仓的涨幅/价格、仓位，自动计算均价和亏损</p>
+
+                <div style="display: flex; gap: 20px; margin-bottom: 15px;">
+                    <div class="input-group" style="flex: 1;">
+                        <label for="basePrice">起始价：</label>
+                        <input type="number" id="basePrice" placeholder="如 0.8652" step="any" oninput="calculateDCA()">
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="dcaTable" style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th style="padding: 8px; border: 1px solid #ddd;">补仓</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">涨幅%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">价格</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">仓位</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">累计仓位</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">当前亏损%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dcaTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <button onclick="addDCARow()"
+                    style="margin-top: 10px; padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">+
+                    添加补仓</button>
+
+                <div id="dcaSummary"
+                    style="margin-top: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; display: none;">
+                    <strong>汇总：</strong>
+                    <span id="dcaSummaryText"></span>
+                </div>
             </div>
-        </div>
-
-        <div class="calculator-section">
-            <h2>2. 💰 价格百分比调整</h2>
-            <p style="font-size: 0.8em; color: #6c757d;">公式：$价格 \times (1 + 百分比)$</p>
-            <p style="font-size: 0.7em; color: #6c757d;">(百分比请按整数输入，如 5 或 -2)</p>
-
-            <div class="input-group">
-                <label for="originalPrice">输入价格：</label>
-                <input type="number" id="originalPrice" placeholder="请输入原始价格" oninput="calculateAdjustedPrice()">
-            </div>
-
-            <div class="input-group">
-                <label for="percentage">调整百分比 (%)：</label>
-                <input type="number" id="percentage" placeholder="请输入百分比" oninput="calculateAdjustedPrice()">
-            </div>
-
-            <div class="result" onclick="copyResult('adjustedPriceResult')">
-                结果：<span id="adjustedPriceResult"></span>
-                <span class="copy-hint">(点击复制)</span>
-            </div>
-        </div>
-
-        <div class="calculator-section placeholder">
-            <h2>3. ✨ 待添加新工具</h2>
-            <p style="font-size: 0.9em; color: #6c757d; text-align: center; padding-top: 50px;">
-                请告诉我下一个工具的功能，我将在这里为您实现。
-            </p>
         </div>
     </div>
-</div>
 
-<script>
-    function calculatePercentageChange() {
-        const startPrice = parseFloat(document.getElementById('startPrice').value);
-        const endPrice = parseFloat(document.getElementById('endPrice').value);
-        const resultElement = document.getElementById('percentageChangeResult');
+    <script>
+        // 马丁补仓计算器
+        let dcaRows = [];
+        let rowIdCounter = 0;
 
-        if (isNaN(startPrice) || isNaN(endPrice) || startPrice === 0) {
-            resultElement.textContent = '请检查输入或起始价不能为 0';
-            return;
+        function addDCARow() {
+            const id = rowIdCounter++;
+            dcaRows.push({ id, rise: '', price: '', position: '' });
+            renderDCATable();
         }
 
-        const change = endPrice - startPrice;
-        const percentageChange = (change / startPrice) * 100;
-
-        resultElement.textContent = percentageChange.toFixed(4) + '%';
-    }
-
-    function calculateAdjustedPrice() {
-        const originalPrice = parseFloat(document.getElementById('originalPrice').value);
-        const percentage = parseFloat(document.getElementById('percentage').value);
-        const resultElement = document.getElementById('adjustedPriceResult');
-
-        if (isNaN(originalPrice) || isNaN(percentage)) {
-            resultElement.textContent = '请检查输入';
-            return;
+        function removeDCARow(id) {
+            dcaRows = dcaRows.filter(row => row.id !== id);
+            renderDCATable();
+            calculateDCA();
         }
 
-        const factor = 1 + (percentage / 100);
+        function renderDCATable() {
+            const tbody = document.getElementById('dcaTableBody');
+            tbody.innerHTML = '';
+            const basePrice = parseFloat(document.getElementById('basePrice').value);
 
-        const adjustedPrice = originalPrice * factor;
+            dcaRows.forEach((row, index) => {
+                const tr = document.createElement('tr');
 
-        resultElement.textContent = adjustedPrice.toFixed(8);
-    }
+                // 判断禁用状态：有涨幅则禁用价格，有价格则禁用涨幅
+                const riseDisabled = row.price !== '' && row.rise === '';
+                const priceDisabled = row.rise !== '' && row.price === '';
 
-    function copyResult(spanId) {
-        const resultSpan = document.getElementById(spanId);
-        let textToCopy = resultSpan.textContent;
+                // 计算显示值
+                let displayRise = row.rise;
+                let displayPrice = row.price;
 
-        if (!textToCopy || textToCopy.includes('检查输入') || textToCopy.includes('¥')) {
-            textToCopy = textToCopy.replace('¥', '').trim();
+                if (!isNaN(basePrice) && basePrice > 0) {
+                    if (row.rise !== '' && row.price === '') {
+                        const rise = parseFloat(row.rise);
+                        if (!isNaN(rise)) {
+                            displayPrice = (basePrice * (1 + rise / 100)).toFixed(4);
+                        }
+                    } else if (row.price !== '' && row.rise === '') {
+                        const price = parseFloat(row.price);
+                        if (!isNaN(price)) {
+                            displayRise = (((price - basePrice) / basePrice) * 100).toFixed(2);
+                        }
+                    }
+                }
+
+                tr.innerHTML = `
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <div style="position: relative; display: inline-block;">
+                        <input type="number" id="rise_${row.id}" value="${displayRise}" 
+                               placeholder="如14" step="any" 
+                               style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${riseDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
+                               ${riseDisabled ? 'readonly' : ''}
+                               oninput="handleDCAInput(${row.id}, 'rise', this.value)">
+                        <span onclick="clearDCAField(${row.id}, 'rise')" 
+                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                    </div>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <div style="position: relative; display: inline-block;">
+                        <input type="number" id="price_${row.id}" value="${displayPrice}" 
+                               placeholder="如1.0097" step="any" 
+                               style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${priceDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
+                               ${priceDisabled ? 'readonly' : ''}
+                               oninput="handleDCAInput(${row.id}, 'price', this.value)">
+                        <span onclick="clearDCAField(${row.id}, 'price')" 
+                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                    </div>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <div style="position: relative; display: inline-block;">
+                        <input type="number" id="pos_${row.id}" value="${row.position}" 
+                               placeholder="如30" step="any" 
+                               style="width: 70px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
+                               oninput="handleDCAInput(${row.id}, 'position', this.value)">
+                        <span onclick="clearDCAField(${row.id}, 'position')" 
+                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                    </div>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="cumPos_${row.id}">-</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="avgPrice_${row.id}">-</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="distPrev_${row.id}">-</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${row.id}">-</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                    <button onclick="removeDCARow(${row.id})" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">删除</button>
+                </td>
+            `;
+                tbody.appendChild(tr);
+            });
+
+            calculateDCA();
         }
 
-        if (!textToCopy) return;
+        function clearDCAField(id, field) {
+            const row = dcaRows.find(r => r.id === id);
+            if (row) {
+                row[field] = '';
+                renderDCATable();
+            }
+        }
 
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            showCopyMessage();
-        }).catch(err => {
-            console.error('复制失败:', err);
-            alert('复制失败，请手动复制：' + textToCopy);
+        function handleDCAInput(id, field, value) {
+            const row = dcaRows.find(r => r.id === id);
+            if (row) {
+                row[field] = value;
+                const basePrice = parseFloat(document.getElementById('basePrice').value);
+
+                // 互斥逻辑：填了涨幅就清空价格数据并计算显示价格，填了价格就清空涨幅
+                if (field === 'rise' && value !== '') {
+                    row.price = '';
+                    // 计算并显示价格
+                    const priceInput = document.getElementById(`price_${row.id}`);
+                    if (priceInput && !isNaN(basePrice) && basePrice > 0) {
+                        const rise = parseFloat(value);
+                        if (!isNaN(rise)) {
+                            priceInput.value = (basePrice * (1 + rise / 100)).toFixed(4);
+                        }
+                    }
+                } else if (field === 'price' && value !== '') {
+                    row.rise = '';
+                    // 计算并显示涨幅
+                    const riseInput = document.getElementById(`rise_${row.id}`);
+                    if (riseInput && !isNaN(basePrice) && basePrice > 0) {
+                        const price = parseFloat(value);
+                        if (!isNaN(price)) {
+                            riseInput.value = (((price - basePrice) / basePrice) * 100).toFixed(2);
+                        }
+                    }
+                }
+                calculateDCA();
+            }
+        }
+
+        function calculateDCA() {
+            const basePrice = parseFloat(document.getElementById('basePrice').value);
+
+            if (isNaN(basePrice) || basePrice <= 0) {
+                document.getElementById('dcaSummary').style.display = 'none';
+                return;
+            }
+
+            let realPosition = 0;  // 真实仓位（会随价格变化）
+            let totalCost = 0;     // 总投入成本（U）
+            let prevPrice = null;
+            let lastValidPrice = null;
+
+            dcaRows.forEach((row, index) => {
+                let rise = parseFloat(row.rise);
+                let price = parseFloat(row.price);
+                const position = parseFloat(row.position);
+
+                // 根据输入计算实际价格
+                if (row.rise !== '' && !isNaN(rise)) {
+                    price = basePrice * (1 + rise / 100);
+                } else if (row.price !== '' && !isNaN(price)) {
+                    // price 已经有值
+                }
+
+                const cumPosEl = document.getElementById(`cumPos_${row.id}`);
+                const avgPriceEl = document.getElementById(`avgPrice_${row.id}`);
+                const distPrevEl = document.getElementById(`distPrev_${row.id}`);
+                const currLossEl = document.getElementById(`currLoss_${row.id}`);
+
+                // 距上次涨幅
+                if (!isNaN(price) && price > 0) {
+                    const distPrev = prevPrice ? ((price - prevPrice) / prevPrice) * 100 : 0;
+                    if (distPrevEl) distPrevEl.textContent = index === 0 ? '-' : distPrev.toFixed(2) + '%';
+
+                    // 更新之前的仓位价值（做空时价格涨，仓位膨胀）
+                    if (prevPrice && realPosition > 0) {
+                        realPosition = realPosition * (price / prevPrice);
+                    }
+
+                    prevPrice = price;
+                    lastValidPrice = price;
+                } else {
+                    if (distPrevEl) distPrevEl.textContent = '-';
+                }
+
+                // 有仓位才加入
+                if (!isNaN(price) && !isNaN(position) && position > 0) {
+                    realPosition += position;
+                    totalCost += position;  // 投入的U（本金）
+
+                    // 成本价 = 总投入 / 真实仓位 * 当前价格
+                    const avgPrice = (totalCost / realPosition) * price;
+                    // 当前亏损 = (真实仓位 - 总投入) / 总投入
+                    const currLoss = ((realPosition - totalCost) / totalCost) * 100;
+
+                    if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
+                    if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
+                    if (currLossEl) currLossEl.textContent = currLoss.toFixed(2) + '%';
+                } else {
+                    // 没有仓位时，只要有价格和之前有仓位，就显示当前亏损
+                    if (realPosition > 0 && !isNaN(price)) {
+                        // 更新仓位价值
+                        const currLoss = ((realPosition - totalCost) / totalCost) * 100;
+                        if (currLossEl) currLossEl.textContent = currLoss.toFixed(2) + '%';
+                        if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
+                    } else {
+                        if (currLossEl) currLossEl.textContent = '-';
+                        if (cumPosEl) cumPosEl.textContent = '-';
+                    }
+                    if (avgPriceEl) avgPriceEl.textContent = '-';
+                }
+            });
+
+            // 汇总已移除
+            document.getElementById('dcaSummary').style.display = 'none';
+        }
+
+        // localStorage 缓存
+        function saveDCAToStorage() {
+            const basePrice = document.getElementById('basePrice').value;
+            localStorage.setItem('dca_basePrice', basePrice);
+            localStorage.setItem('dca_rows', JSON.stringify(dcaRows));
+            localStorage.setItem('dca_rowIdCounter', rowIdCounter);
+        }
+
+        function loadDCAFromStorage() {
+            const savedBasePrice = localStorage.getItem('dca_basePrice');
+            const savedRows = localStorage.getItem('dca_rows');
+            const savedCounter = localStorage.getItem('dca_rowIdCounter');
+
+            if (savedBasePrice) {
+                document.getElementById('basePrice').value = savedBasePrice;
+            }
+            if (savedRows) {
+                dcaRows = JSON.parse(savedRows);
+            }
+            if (savedCounter) {
+                rowIdCounter = parseInt(savedCounter);
+            }
+
+            if (dcaRows.length === 0) {
+                // 没有缓存数据，添加默认3行
+                addDCARow();
+                addDCARow();
+                addDCARow();
+            } else {
+                renderDCATable();
+            }
+        }
+
+        // 修改 handleDCAInput 保存数据
+        const originalHandleDCAInput = handleDCAInput;
+        handleDCAInput = function (id, field, value) {
+            originalHandleDCAInput(id, field, value);
+            saveDCAToStorage();
+        };
+
+        // 修改其他函数保存数据
+        const originalAddDCARow = addDCARow;
+        addDCARow = function () {
+            originalAddDCARow();
+            saveDCAToStorage();
+        };
+
+        const originalRemoveDCARow = removeDCARow;
+        removeDCARow = function (id) {
+            originalRemoveDCARow(id);
+            saveDCAToStorage();
+        };
+
+        const originalClearDCAField = clearDCAField;
+        clearDCAField = function (id, field) {
+            originalClearDCAField(id, field);
+            saveDCAToStorage();
+        };
+
+        // 起始价变化时保存
+        document.getElementById('basePrice').addEventListener('input', function () {
+            renderDCATable();
+            saveDCAToStorage();
         });
-    }
 
-    function showCopyMessage() {
-        const message = document.getElementById('copyMessage');
-        message.classList.add('visible');
+        // 初始化：从缓存加载
+        loadDCAFromStorage();
 
-        setTimeout(() => {
-            message.classList.remove('visible');
-        }, 2000);
-    }
+        function calculatePercentageChange() {
+            const startPrice = parseFloat(document.getElementById('startPrice').value);
+            const endPrice = parseFloat(document.getElementById('endPrice').value);
+            const resultElement = document.getElementById('percentageChangeResult');
 
-    calculatePercentageChange();
-    calculateAdjustedPrice();
+            if (isNaN(startPrice) || isNaN(endPrice) || startPrice === 0) {
+                resultElement.textContent = '请检查输入或起始价不能为 0';
+                return;
+            }
 
-</script>
+            const change = endPrice - startPrice;
+            const percentageChange = (change / startPrice) * 100;
+
+            resultElement.textContent = percentageChange.toFixed(4) + '%';
+        }
+
+        function calculateAdjustedPrice() {
+            const originalPrice = parseFloat(document.getElementById('originalPrice').value);
+            const percentage = parseFloat(document.getElementById('percentage').value);
+            const resultElement = document.getElementById('adjustedPriceResult');
+
+            if (isNaN(originalPrice) || isNaN(percentage)) {
+                resultElement.textContent = '请检查输入';
+                return;
+            }
+
+            const factor = 1 + (percentage / 100);
+
+            const adjustedPrice = originalPrice * factor;
+
+            resultElement.textContent = adjustedPrice.toFixed(8);
+        }
+
+        function copyResult(spanId) {
+            const resultSpan = document.getElementById(spanId);
+            let textToCopy = resultSpan.textContent;
+
+            if (!textToCopy || textToCopy.includes('检查输入') || textToCopy.includes('¥')) {
+                textToCopy = textToCopy.replace('¥', '').trim();
+            }
+
+            if (!textToCopy) return;
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showCopyMessage();
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制：' + textToCopy);
+            });
+        }
+
+        function showCopyMessage() {
+            const message = document.getElementById('copyMessage');
+            message.classList.add('visible');
+
+            setTimeout(() => {
+                message.classList.remove('visible');
+            }, 2000);
+        }
+
+        calculatePercentageChange();
+        calculateAdjustedPrice();
+
+    </script>
 
 </body>
+
 </html>
