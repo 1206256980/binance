@@ -8,6 +8,7 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -19,7 +20,7 @@ public class BinanceCombinedServer {
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
     private static final int THREADS = 50;
     private static final int DEFAULT_REFRESH_SECONDS = 35;
-    private static final String[] INTERVALS = {"5m","10m","15m","30m","40m","50m","60m","120m","240m"};
+    private static final String[] INTERVALS = { "5m", "10m", "15m", "30m", "40m", "50m", "60m", "120m", "240m" };
     private static final int TOP_CHANGE = 20;
     private static final int TOP_AMPLITUDE = 20;
     private static final int KLINE_COUNT = 100; // 取最近 12 根 5m K 线
@@ -45,9 +46,14 @@ public class BinanceCombinedServer {
     static class CandleRaw {
         BigDecimal open, high, low, close, volume;
         long openTime; // 🌟 增加时间点，用于指数时间戳
+
         CandleRaw(long ot, BigDecimal o, BigDecimal h, BigDecimal l, BigDecimal c, BigDecimal v) {
             this.openTime = ot;
-            open = o; high = h; low = l; close = c; volume = v;
+            open = o;
+            high = h;
+            low = l;
+            close = c;
+            volume = v;
         }
     }
 
@@ -69,7 +75,10 @@ public class BinanceCombinedServer {
 
     static class StrongCoin {
         String symbol;
-        StrongCoin(String s) { symbol = s; }
+
+        StrongCoin(String s) {
+            symbol = s;
+        }
     }
 
     // 🌟 新增数据模型：指数历史点
@@ -90,7 +99,7 @@ public class BinanceCombinedServer {
     // 🌟 新增数据模型：用于指数计算时的排序和暂存
     private static class IndexData {
         String symbol;
-        BigDecimal change;     // Delta P_i (30分钟价格变动百分比)
+        BigDecimal change; // Delta P_i (30分钟价格变动百分比)
         BigDecimal tradeValue; // V_i (30分钟总成交额 / 交易价值)
 
         public IndexData(String symbol, BigDecimal change, BigDecimal tradeValue) {
@@ -100,11 +109,9 @@ public class BinanceCombinedServer {
         }
     }
 
-
     private static volatile List<String> cachedSymbols = new ArrayList<>();
     private static volatile long cachedSymbolsTime = 0;
     private static final long SYMBOLS_CACHE_DURATION = 60 * 60 * 1000; // 10分钟
-
 
     // 强势币使用的 K 线根数（6 根 5m -> 30 分钟）
     private static final int STRONG_KLINE_COUNT = 6;
@@ -137,7 +144,8 @@ public class BinanceCombinedServer {
         // 🌟 新增 API 接口：获取指数历史数据
         Spark.get("/index_history", (req, res) -> {
             res.type("application/json; charset=UTF-8");
-            List<IndexPoint> collect = indexHistoryCache.stream().sorted(Comparator.comparing(IndexPoint::getTimestamp).reversed()).collect(Collectors.toList());
+            List<IndexPoint> collect = indexHistoryCache.stream()
+                    .sorted(Comparator.comparing(IndexPoint::getTimestamp).reversed()).collect(Collectors.toList());
             return new Gson().toJson(collect);
         });
     }
@@ -154,7 +162,8 @@ public class BinanceCombinedServer {
             futures.add(CompletableFuture.runAsync(() -> {
                 // 🌟 fetch5mKlines 现在返回带时间戳的 CandleRaw
                 List<CandleRaw> klines = fetch5mKlines(symbol, KLINE_COUNT);
-                if (klines != null && !klines.isEmpty()) newKlineCache.put(symbol, klines);
+                if (klines != null && !klines.isEmpty())
+                    newKlineCache.put(symbol, klines);
             }, EXECUTOR));
         }
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -166,58 +175,58 @@ public class BinanceCombinedServer {
 
         // ---------------- 排行榜逻辑 ---------------- (代码保持不变，省略以保持简洁，但请在您的文件中保留)
         // ... (原有的排行榜逻辑)
-        Map<String, Map<String,Candle>> allMap = new ConcurrentHashMap<>();
-        for(String symbol: klineCache.keySet()){
+        Map<String, Map<String, Candle>> allMap = new ConcurrentHashMap<>();
+        for (String symbol : klineCache.keySet()) {
             List<CandleRaw> klines = klineCache.get(symbol);
-            if(klines==null || klines.isEmpty()) continue;
-            Map<String,Candle> map = new HashMap<>();
+            if (klines == null || klines.isEmpty())
+                continue;
+            Map<String, Candle> map = new HashMap<>();
 
             // 遍历所有 INTERVALS，计算需要多少根 5m K 线
-            for(String interval: INTERVALS){
-                int minutes = Integer.parseInt(interval.replace("m",""));
+            for (String interval : INTERVALS) {
+                int minutes = Integer.parseInt(interval.replace("m", ""));
                 int needed = minutes / 5;
-                if(klines.size() >= needed){
-                    List<CandleRaw> sub = klines.subList(klines.size()-needed, klines.size());
+                if (klines.size() >= needed) {
+                    List<CandleRaw> sub = klines.subList(klines.size() - needed, klines.size());
                     map.put(interval, aggregate(symbol, sub));
                 }
             }
-            allMap.put(symbol,map);
+            allMap.put(symbol, map);
         }
 
         // 构建排行榜
-        for(String interval: INTERVALS){
+        for (String interval : INTERVALS) {
             List<Candle> candles = new ArrayList<>();
-            for(String symbol: symbols){
-                Map<String,Candle> m = allMap.get(symbol);
-                if(m!=null && m.containsKey(interval)){
+            for (String symbol : symbols) {
+                Map<String, Candle> m = allMap.get(symbol);
+                if (m != null && m.containsKey(interval)) {
                     Candle c = m.get(interval);
                     Map<String, Map<String, BigDecimal>> others = new HashMap<>();
-                    for(String i2: INTERVALS){
+                    for (String i2 : INTERVALS) {
                         Candle c2 = m.get(i2);
-                        if(c2!=null){
-                            Map<String,BigDecimal> map2 = new HashMap<>();
-                            map2.put("change",c2.change);
-                            map2.put("amplitude",c2.amplitude);
-                            others.put(i2,map2);
+                        if (c2 != null) {
+                            Map<String, BigDecimal> map2 = new HashMap<>();
+                            map2.put("change", c2.change);
+                            map2.put("amplitude", c2.amplitude);
+                            others.put(i2, map2);
                         }
                     }
                     c.others = others;
                     candles.add(c);
                 }
             }
-            Map<String,List<Candle>> intervalMap = new HashMap<>();
+            Map<String, List<Candle>> intervalMap = new HashMap<>();
             intervalMap.put("change", candles.stream()
-                    .sorted((a,b)->b.change.compareTo(a.change))
+                    .sorted((a, b) -> b.change.compareTo(a.change))
                     .limit(TOP_CHANGE)
                     .collect(Collectors.toList()));
-            //振幅排行榜数据去掉
-//            intervalMap.put("amplitude", candles.stream()
-//                    .sorted((a, b) -> b.amplitude.compareTo(a.amplitude))
-//                    .limit(TOP_AMPLITUDE)
-//                    .collect(Collectors.toList()));
+            // 振幅排行榜数据去掉
+            // intervalMap.put("amplitude", candles.stream()
+            // .sorted((a, b) -> b.amplitude.compareTo(a.amplitude))
+            // .limit(TOP_AMPLITUDE)
+            // .collect(Collectors.toList()));
             rankCache.put(interval, intervalMap);
         }
-
 
         // ---------------- 强势币逻辑 ---------------- (代码保持不变，省略以保持简洁，但请在您的文件中保留)
         List<String> strongs = new ArrayList<>();
@@ -225,7 +234,8 @@ public class BinanceCombinedServer {
 
         for (String symbol : symbols) {
             List<CandleRaw> rawsAll = klineCache.get(symbol);
-            if (rawsAll == null || rawsAll.size() < STRONG_KLINE_COUNT) continue;
+            if (rawsAll == null || rawsAll.size() < STRONG_KLINE_COUNT)
+                continue;
 
             // ... (原有的强势币计算逻辑)
 
@@ -267,7 +277,7 @@ public class BinanceCombinedServer {
             if (posRatio.compareTo(new BigDecimal("0.7")) >= 0 &&
                     cumChange.compareTo(new BigDecimal("9")) >= 0) {
                 isComboOne = true;
-                System.out.println("强势币："+symbol+",区间百分比:"+posRatio+"，累计涨幅："+cumChange);
+                System.out.println("强势币：" + symbol + ",区间百分比:" + posRatio + "，累计涨幅：" + cumChange);
             }
 
             // ----------------------------------------------------
@@ -295,14 +305,15 @@ public class BinanceCombinedServer {
             // 组合二判断： [成交量突增] AND [5m 涨幅 >= 5%]
             if (previousMaxVolume.compareTo(BigDecimal.ZERO) > 0) {
                 // Condition 1: Volume Spike
-                boolean volumeCondition = currentVolume.compareTo(previousMaxVolume.multiply(new BigDecimal("4.0"))) >= 0;//成交量4倍量爆量
+                boolean volumeCondition = currentVolume
+                        .compareTo(previousMaxVolume.multiply(new BigDecimal("4.0"))) >= 0;// 成交量4倍量爆量
 
                 // Condition 2: Price Surge (5m Change >= 5%)
-                boolean surgeCondition = current5mChange.compareTo(new BigDecimal("5")) >= 0;//涨幅大于5
+                boolean surgeCondition = current5mChange.compareTo(new BigDecimal("5")) >= 0;// 涨幅大于5
 
                 if (volumeCondition && surgeCondition) {
                     isVolumeSpikeAndSurge = true;
-                    System.out.println("强势币："+symbol+",当前涨幅:"+surgeCondition+"，成交量倍数："+volumeCondition);
+                    System.out.println("强势币：" + symbol + ",当前涨幅:" + surgeCondition + "，成交量倍数：" + volumeCondition);
                 }
             }
 
@@ -317,8 +328,6 @@ public class BinanceCombinedServer {
         strongCache = strongs;
     }
 
-
-
     // ------------------- 工具方法 -------------------
     private static List<String> getAllSymbolsCached() throws Exception {
         long now = System.currentTimeMillis();
@@ -327,7 +336,8 @@ public class BinanceCombinedServer {
         }
 
         String json = httpGet(EXCHANGE_INFO_URL);
-        if (json == null || json.isEmpty()) return Collections.emptyList();
+        if (json == null || json.isEmpty())
+            return Collections.emptyList();
         Gson gson = new Gson();
         JsonObject obj = gson.fromJson(json, JsonObject.class);
         JsonArray arr = obj.getAsJsonArray("symbols");
@@ -336,30 +346,36 @@ public class BinanceCombinedServer {
         for (JsonElement el : arr) {
             JsonObject symObj = el.getAsJsonObject();
             String symbol = symObj.get("symbol").getAsString();
-            if (symbol.endsWith("USDT")) list.add(symbol);
+            // 只保留状态为 TRADING 的 USDT 交易对，过滤掉已下架或暂停交易的币种
+            String status = symObj.has("status") ? symObj.get("status").getAsString() : "";
+            if (symbol.endsWith("USDT") && "TRADING".equals(status)) {
+                list.add(symbol);
+            }
         }
 
         // 去重
         cachedSymbols = new ArrayList<>(new LinkedHashSet<>(list));
-        System.out.println("一共获取到"+cachedSymbols.size()+"个交易对");
+        System.out.println("一共获取到" + cachedSymbols.size() + "个交易对");
         cachedSymbolsTime = now;
 
         return cachedSymbols;
     }
 
     static int count = 0;
+
     private static List<CandleRaw> fetch5mKlines(String symbol, int limit) {
         try {
             long start = System.currentTimeMillis();
-            String url = KLINES_URL + "?symbol=" + symbol + "&interval=5m&limit=" + limit;
+            String url = KLINES_URL + "?symbol=" + URLEncoder.encode(symbol, "UTF-8") + "&interval=5m&limit=" + limit;
             String json = httpGet(url);
             long end = System.currentTimeMillis() - start;
-            if (count % 300 == 0) {//每三百次请求打一次日志
+            if (count % 300 == 0) {// 每三百次请求打一次日志
                 System.out.println("接口返回,symbol:" + symbol + "耗时：" + end + ",json:" + json);
                 System.out.println("-------------------------------------------");
             }
             count++;
-            if (json == null || json.isEmpty()) return Collections.emptyList();
+            if (json == null || json.isEmpty())
+                return Collections.emptyList();
             Gson gson = new Gson();
             JsonArray arr = gson.fromJson(json, JsonArray.class);
             List<CandleRaw> list = new ArrayList<>();
@@ -399,7 +415,8 @@ public class BinanceCombinedServer {
             BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
-            while ((line = br.readLine()) != null) sb.append(line);
+            while ((line = br.readLine()) != null)
+                sb.append(line);
             br.close();
             return sb.toString();
         } catch (Exception e) {
@@ -410,7 +427,7 @@ public class BinanceCombinedServer {
 
     private static void initProxy() {
         String isProxy = System.getenv("is_proxy");
-        System.out.println("当前代理状态："+isProxy);
+        System.out.println("当前代理状态：" + isProxy);
         if ("false".equals(isProxy)) {
             return;
         }
@@ -420,6 +437,3 @@ public class BinanceCombinedServer {
         System.setProperty("https.proxyPort", "7897");
     }
 }
-
-
-

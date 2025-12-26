@@ -1,17 +1,14 @@
 package org.example;
 
-import org.example.monitor.FiveMinMonitor;
-
 public class Main {
     public static void main(String[] args) throws Exception {
         initProxy();
         BinanceCombinedServer.main(args);
-        FiveMinMonitor.main(args);
     }
 
     private static void initProxy() {
         String isProxy = System.getenv("is_proxy");
-        System.out.println("当前代理状态："+isProxy);
+        System.out.println("当前代理状态：" + isProxy);
         if ("false".equals(isProxy)) {
             return;
         }
