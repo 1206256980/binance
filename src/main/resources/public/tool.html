@@ -198,14 +198,14 @@
                 <h2>3. 📊 马丁补仓计算器</h2>
                 <p style="font-size: 0.8em; color: #6c757d;">支持多组计算，每组有独立的起始价和补仓列表</p>
 
-                <button onclick="addDCAGroup()"
-                    style="margin-bottom: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
-                    ➕ 新增计算组
-                </button>
-
                 <div id="dcaGroupsContainer">
                     <!-- 动态生成的计算组会放在这里 -->
                 </div>
+
+                <button onclick="addDCAGroup()"
+                    style="margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
+                    ➕ 新增计算组
+                </button>
             </div>
         </div>
     </div>
@@ -393,10 +393,9 @@
             const basePrice = parseFloat(group.basePrice);
             const priceDecimals = getDecimalPlaces(group.basePrice);
 
+
             let rowsHTML = '';
             group.rows.forEach((row, rowIndex) => {
-                const riseDisabled = row.price !== '' && row.rise === '';
-                const priceDisabled = row.rise !== '' && row.price === '';
 
                 let displayRise = row.rise;
                 let displayPrice = row.price;
@@ -422,8 +421,7 @@
                         <div style="position: relative; display: inline-block;">
                             <input type="number" id="rise_${group.id}_${row.id}" value="${displayRise}" 
                                    placeholder="如14" step="any" 
-                                   style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${riseDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
-                                   ${riseDisabled ? 'readonly' : ''}
+                                   style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
                                    oninput="handleDCAInput(${group.id}, ${row.id}, 'rise', this.value)">
                             <span onclick="clearDCAField(${group.id}, ${row.id}, 'rise')" 
                                   style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
@@ -433,8 +431,7 @@
                         <div style="position: relative; display: inline-block;">
                             <input type="number" id="price_${group.id}_${row.id}" value="${displayPrice}" 
                                    placeholder="如1.0097" step="any" 
-                                   style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${priceDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
-                                   ${priceDisabled ? 'readonly' : ''}
+                                   style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
                                    oninput="handleDCAInput(${group.id}, ${row.id}, 'price', this.value)">
                             <span onclick="clearDCAField(${group.id}, ${row.id}, 'price')" 
                                   style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
@@ -538,9 +535,12 @@
                 const distPrevEl = document.getElementById(`distPrev_${groupId}_${row.id}`);
                 const currLossEl = document.getElementById(`currLoss_${groupId}_${row.id}`);
 
+
                 if (!isNaN(price) && price > 0) {
-                    const distPrev = prevPrice ? ((price - prevPrice) / prevPrice) * 100 : 0;
-                    if (distPrevEl) distPrevEl.textContent = index === 0 ? '-' : distPrev.toFixed(2) + '%';
+                    // 第一行对比起始价，后续行对比上一行价格
+                    const comparePrice = index === 0 ? basePrice : prevPrice;
+                    const distPrev = comparePrice ? ((price - comparePrice) / comparePrice) * 100 : 0;
+                    if (distPrevEl) distPrevEl.textContent = distPrev.toFixed(2) + '%';
 
                     if (prevPrice && realPosition > 0) {
                         realPosition = realPosition * (price / prevPrice);
