@@ -196,89 +196,183 @@
 
             <div class="calculator-section" style="flex: 0 0 calc(100% - 20px); min-width: 100%;">
                 <h2>3. 📊 马丁补仓计算器</h2>
-                <p style="font-size: 0.8em; color: #6c757d;">输入起始价和每次补仓的涨幅/价格、仓位，自动计算均价和亏损</p>
+                <p style="font-size: 0.8em; color: #6c757d;">支持多组计算，每组有独立的起始价和补仓列表</p>
 
-                <div style="display: flex; gap: 20px; margin-bottom: 15px;">
-                    <div class="input-group" style="flex: 1;">
-                        <label for="basePrice">起始价：</label>
-                        <input type="number" id="basePrice" placeholder="如 0.8652" step="any" oninput="calculateDCA()">
-                    </div>
-                </div>
+                <button onclick="addDCAGroup()"
+                    style="margin-bottom: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
+                    ➕ 新增计算组
+                </button>
 
-                <div style="overflow-x: auto;">
-                    <table id="dcaTable" style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
-                        <thead>
-                            <tr style="background: #f8f9fa;">
-                                <th style="padding: 8px; border: 1px solid #ddd;">补仓</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">涨幅%</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">价格</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">仓位</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">累计仓位</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">当前亏损</th>
-                                <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dcaTableBody">
-                        </tbody>
-                    </table>
-                </div>
-
-                <button onclick="addDCARow()"
-                    style="margin-top: 10px; padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">+
-                    添加补仓</button>
-
-                <div id="dcaSummary"
-                    style="margin-top: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; display: none;">
-                    <strong>汇总：</strong>
-                    <span id="dcaSummaryText"></span>
+                <div id="dcaGroupsContainer">
+                    <!-- 动态生成的计算组会放在这里 -->
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 马丁补仓计算器
-        let dcaRows = [];
-        let rowIdCounter = 0;
+        // ========== 马丁补仓计算器 - 多组支持 ==========
+        let dcaGroups = []; // 存储所有计算组
+        let groupIdCounter = 0;
+        let globalRowIdCounter = 0;
 
         // 获取数字的小数位数
         function getDecimalPlaces(numStr) {
-            if (!numStr || numStr === '') return 4; // 默认4位
+            if (!numStr || numStr === '') return 4;
             const str = numStr.toString();
             const dotIndex = str.indexOf('.');
             if (dotIndex === -1) return 0;
             return str.length - dotIndex - 1;
         }
 
-        function addDCARow() {
-            const id = rowIdCounter++;
-            dcaRows.push({ id, rise: '', price: '', position: '' });
-            renderDCATable();
+        // 添加新的计算组
+        function addDCAGroup() {
+            const groupId = groupIdCounter++;
+            const group = {
+                id: groupId,
+                basePrice: '',
+                rows: []
+            };
+            // 默认添加3行
+            for (let i = 0; i < 3; i++) {
+                group.rows.push({ id: globalRowIdCounter++, rise: '', price: '', position: '' });
+            }
+            dcaGroups.push(group);
+            renderAllGroups();
+            saveDCAToStorage();
         }
 
-        function removeDCARow(id) {
-            dcaRows = dcaRows.filter(row => row.id !== id);
-            renderDCATable();
-            calculateDCA();
+        // 删除计算组
+        function removeDCAGroup(groupId) {
+            dcaGroups = dcaGroups.filter(g => g.id !== groupId);
+            renderAllGroups();
+            saveDCAToStorage();
         }
 
-        function renderDCATable() {
-            const tbody = document.getElementById('dcaTableBody');
-            tbody.innerHTML = '';
-            const basePriceInput = document.getElementById('basePrice').value;
-            const basePrice = parseFloat(basePriceInput);
-            const priceDecimals = getDecimalPlaces(basePriceInput);
+        // 添加补仓行
+        function addDCARow(groupId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                group.rows.push({ id: globalRowIdCounter++, rise: '', price: '', position: '' });
+                renderGroup(groupId);
+                saveDCAToStorage();
+            }
+        }
 
-            dcaRows.forEach((row, index) => {
-                const tr = document.createElement('tr');
+        // 删除补仓行
+        function removeDCARow(groupId, rowId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                group.rows = group.rows.filter(r => r.id !== rowId);
+                renderGroup(groupId);
+                calculateDCA(groupId);
+                saveDCAToStorage();
+            }
+        }
 
-                // 判断禁用状态：有涨幅则禁用价格，有价格则禁用涨幅
+        // 清除字段
+        function clearDCAField(groupId, rowId, field) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                const row = group.rows.find(r => r.id === rowId);
+                if (row) {
+                    row[field] = '';
+                    renderGroup(groupId);
+                    saveDCAToStorage();
+                }
+            }
+        }
+
+        // 处理起始价输入
+        function handleBasePriceInput(groupId, value) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                group.basePrice = value;
+                renderGroup(groupId);
+                saveDCAToStorage();
+            }
+        }
+
+        // 处理行输入
+        function handleDCAInput(groupId, rowId, field, value) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const row = group.rows.find(r => r.id === rowId);
+            if (!row) return;
+
+            row[field] = value;
+            const basePrice = parseFloat(group.basePrice);
+            const priceDecimals = getDecimalPlaces(group.basePrice);
+
+            // 互斥逻辑
+            if (field === 'rise' && value !== '') {
+                row.price = '';
+                const priceInput = document.getElementById(`price_${groupId}_${rowId}`);
+                if (priceInput && !isNaN(basePrice) && basePrice > 0) {
+                    const rise = parseFloat(value);
+                    if (!isNaN(rise)) {
+                        priceInput.value = (basePrice * (1 + rise / 100)).toFixed(priceDecimals);
+                    }
+                }
+            } else if (field === 'price' && value !== '') {
+                row.rise = '';
+                const riseInput = document.getElementById(`rise_${groupId}_${rowId}`);
+                if (riseInput && !isNaN(basePrice) && basePrice > 0) {
+                    const price = parseFloat(value);
+                    if (!isNaN(price)) {
+                        riseInput.value = (((price - basePrice) / basePrice) * 100).toFixed(2);
+                    }
+                }
+            }
+
+            calculateDCA(groupId);
+            saveDCAToStorage();
+        }
+
+        // 渲染所有组
+        function renderAllGroups() {
+            const container = document.getElementById('dcaGroupsContainer');
+            container.innerHTML = '';
+
+            dcaGroups.forEach((group, index) => {
+                const groupDiv = document.createElement('div');
+                groupDiv.id = `dcaGroup_${group.id}`;
+                groupDiv.style.cssText = 'margin-bottom: 25px; padding: 15px; border: 2px solid #007bff; border-radius: 8px; background: #f8f9ff;';
+
+                groupDiv.innerHTML = generateGroupHTML(group, index);
+                container.appendChild(groupDiv);
+
+                calculateDCA(group.id);
+            });
+        }
+
+        // 渲染单个组
+        function renderGroup(groupId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const groupDiv = document.getElementById(`dcaGroup_${groupId}`);
+            if (!groupDiv) {
+                renderAllGroups();
+                return;
+            }
+
+            const index = dcaGroups.findIndex(g => g.id === groupId);
+            groupDiv.innerHTML = generateGroupHTML(group, index);
+            calculateDCA(groupId);
+        }
+
+        // 生成组的HTML
+        function generateGroupHTML(group, index) {
+            const basePrice = parseFloat(group.basePrice);
+            const priceDecimals = getDecimalPlaces(group.basePrice);
+
+            let rowsHTML = '';
+            group.rows.forEach((row, rowIndex) => {
                 const riseDisabled = row.price !== '' && row.rise === '';
                 const priceDisabled = row.rise !== '' && row.price === '';
 
-                // 计算显示值
                 let displayRise = row.rise;
                 let displayPrice = row.price;
 
@@ -296,159 +390,150 @@
                     }
                 }
 
-                tr.innerHTML = `
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">
-                    <div style="position: relative; display: inline-block;">
-                        <input type="number" id="rise_${row.id}" value="${displayRise}" 
-                               placeholder="如14" step="any" 
-                               style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${riseDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
-                               ${riseDisabled ? 'readonly' : ''}
-                               oninput="handleDCAInput(${row.id}, 'rise', this.value)">
-                        <span onclick="clearDCAField(${row.id}, 'rise')" 
-                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
-                    </div>
-                </td>
-                <td style="padding: 8px; border: 1px solid #ddd;">
-                    <div style="position: relative; display: inline-block;">
-                        <input type="number" id="price_${row.id}" value="${displayPrice}" 
-                               placeholder="如1.0097" step="any" 
-                               style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${priceDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
-                               ${priceDisabled ? 'readonly' : ''}
-                               oninput="handleDCAInput(${row.id}, 'price', this.value)">
-                        <span onclick="clearDCAField(${row.id}, 'price')" 
-                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
-                    </div>
-                </td>
-                <td style="padding: 8px; border: 1px solid #ddd;">
-                    <div style="position: relative; display: inline-block;">
-                        <input type="number" id="pos_${row.id}" value="${row.position}" 
-                               placeholder="如30" step="any" 
-                               style="width: 70px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
-                               oninput="handleDCAInput(${row.id}, 'position', this.value)">
-                        <span onclick="clearDCAField(${row.id}, 'position')" 
-                              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
-                    </div>
-                </td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="cumPos_${row.id}">-</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="avgPrice_${row.id}">-</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="distPrev_${row.id}">-</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${row.id}">-</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                    <button onclick="removeDCARow(${row.id})" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">删除</button>
-                </td>
-            `;
-                tbody.appendChild(tr);
+                rowsHTML += `
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${rowIndex + 1}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <div style="position: relative; display: inline-block;">
+                            <input type="number" id="rise_${group.id}_${row.id}" value="${displayRise}" 
+                                   placeholder="如14" step="any" 
+                                   style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${riseDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
+                                   ${riseDisabled ? 'readonly' : ''}
+                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'rise', this.value)">
+                            <span onclick="clearDCAField(${group.id}, ${row.id}, 'rise')" 
+                                  style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                        </div>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <div style="position: relative; display: inline-block;">
+                            <input type="number" id="price_${group.id}_${row.id}" value="${displayPrice}" 
+                                   placeholder="如1.0097" step="any" 
+                                   style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px; ${priceDisabled ? 'background: #f5f5f5; color: #666;' : ''}"
+                                   ${priceDisabled ? 'readonly' : ''}
+                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'price', this.value)">
+                            <span onclick="clearDCAField(${group.id}, ${row.id}, 'price')" 
+                                  style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                        </div>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <div style="position: relative; display: inline-block;">
+                            <input type="number" id="pos_${group.id}_${row.id}" value="${row.position}" 
+                                   placeholder="如30" step="any" 
+                                   style="width: 70px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
+                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'position', this.value)">
+                            <span onclick="clearDCAField(${group.id}, ${row.id}, 'position')" 
+                                  style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
+                        </div>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="cumPos_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="avgPrice_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="distPrev_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                        <button onclick="removeDCARow(${group.id}, ${row.id})" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">删除</button>
+                    </td>
+                </tr>`;
             });
 
-            calculateDCA();
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0; color: #007bff;">📈 计算组 ${index + 1}</h3>
+                    <button onclick="removeDCAGroup(${group.id})" 
+                            style="background: #dc3545; color: white; border: none; padding: 6px 15px; border-radius: 4px; cursor: pointer;">
+                        🗑️ 删除此组
+                    </button>
+                </div>
+                
+                <div style="display: flex; gap: 20px; margin-bottom: 15px; align-items: center;">
+                    <div class="input-group" style="flex: 0 0 auto;">
+                        <label style="font-weight: bold; margin-right: 8px;">起始价：</label>
+                        <input type="number" id="basePrice_${group.id}" value="${group.basePrice}" 
+                               placeholder="如 0.8652" step="any" 
+                               style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px;"
+                               oninput="handleBasePriceInput(${group.id}, this.value)">
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead>
+                            <tr style="background: #e9ecef;">
+                                <th style="padding: 8px; border: 1px solid #ddd;">补仓</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">涨幅%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">价格</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">仓位</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">累计仓位</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">当前亏损</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHTML}
+                        </tbody>
+                    </table>
+                </div>
+
+                <button onclick="addDCARow(${group.id})"
+                    style="margin-top: 10px; padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    + 添加补仓
+                </button>
+            `;
         }
 
-        function clearDCAField(id, field) {
-            const row = dcaRows.find(r => r.id === id);
-            if (row) {
-                row[field] = '';
-                renderDCATable();
-            }
-        }
+        // 计算单个组的DCA
+        function calculateDCA(groupId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (!group) return;
 
-        function handleDCAInput(id, field, value) {
-            const row = dcaRows.find(r => r.id === id);
-            if (row) {
-                row[field] = value;
-                const basePrice = parseFloat(document.getElementById('basePrice').value);
+            const basePrice = parseFloat(group.basePrice);
+            if (isNaN(basePrice) || basePrice <= 0) return;
 
-                // 互斥逻辑：填了涨幅就清空价格数据并计算显示价格，填了价格就清空涨幅
-                if (field === 'rise' && value !== '') {
-                    row.price = '';
-                    // 计算并显示价格
-                    const priceInput = document.getElementById(`price_${row.id}`);
-                    if (priceInput && !isNaN(basePrice) && basePrice > 0) {
-                        const rise = parseFloat(value);
-                        if (!isNaN(rise)) {
-                            priceInput.value = (basePrice * (1 + rise / 100)).toFixed(4);
-                        }
-                    }
-                } else if (field === 'price' && value !== '') {
-                    row.rise = '';
-                    // 计算并显示涨幅
-                    const riseInput = document.getElementById(`rise_${row.id}`);
-                    if (riseInput && !isNaN(basePrice) && basePrice > 0) {
-                        const price = parseFloat(value);
-                        if (!isNaN(price)) {
-                            riseInput.value = (((price - basePrice) / basePrice) * 100).toFixed(2);
-                        }
-                    }
-                }
-                calculateDCA();
-            }
-        }
-
-        function calculateDCA() {
-            const basePrice = parseFloat(document.getElementById('basePrice').value);
-
-            if (isNaN(basePrice) || basePrice <= 0) {
-                document.getElementById('dcaSummary').style.display = 'none';
-                return;
-            }
-
-            let realPosition = 0;  // 真实仓位（会随价格变化）
-            let totalCost = 0;     // 总投入成本（U）
+            let realPosition = 0;
+            let totalCost = 0;
             let prevPrice = null;
-            let lastValidPrice = null;
 
-            dcaRows.forEach((row, index) => {
+            group.rows.forEach((row, index) => {
                 let rise = parseFloat(row.rise);
                 let price = parseFloat(row.price);
                 const position = parseFloat(row.position);
 
-                // 根据输入计算实际价格
                 if (row.rise !== '' && !isNaN(rise)) {
                     price = basePrice * (1 + rise / 100);
-                } else if (row.price !== '' && !isNaN(price)) {
-                    // price 已经有值
                 }
 
-                const cumPosEl = document.getElementById(`cumPos_${row.id}`);
-                const avgPriceEl = document.getElementById(`avgPrice_${row.id}`);
-                const distPrevEl = document.getElementById(`distPrev_${row.id}`);
-                const currLossEl = document.getElementById(`currLoss_${row.id}`);
+                const cumPosEl = document.getElementById(`cumPos_${groupId}_${row.id}`);
+                const avgPriceEl = document.getElementById(`avgPrice_${groupId}_${row.id}`);
+                const distPrevEl = document.getElementById(`distPrev_${groupId}_${row.id}`);
+                const currLossEl = document.getElementById(`currLoss_${groupId}_${row.id}`);
 
-                // 距上次涨幅
                 if (!isNaN(price) && price > 0) {
                     const distPrev = prevPrice ? ((price - prevPrice) / prevPrice) * 100 : 0;
                     if (distPrevEl) distPrevEl.textContent = index === 0 ? '-' : distPrev.toFixed(2) + '%';
 
-                    // 更新之前的仓位价值（做空时价格涨，仓位膨胀）
                     if (prevPrice && realPosition > 0) {
                         realPosition = realPosition * (price / prevPrice);
                     }
 
                     prevPrice = price;
-                    lastValidPrice = price;
                 } else {
                     if (distPrevEl) distPrevEl.textContent = '-';
                 }
 
-                // 有仓位才加入
                 if (!isNaN(price) && !isNaN(position) && position > 0) {
                     realPosition += position;
-                    totalCost += position;  // 投入的U（本金）
+                    totalCost += position;
 
-                    // 成本价 = 总投入 / 真实仓位 * 当前价格
                     const avgPrice = (totalCost / realPosition) * price;
-                    // 当前亏损U = 真实仓位 - 总投入
                     const currLossU = realPosition - totalCost;
-                    // 当前亏损% = (真实仓位 - 总投入) / 总投入
                     const currLossPercent = (currLossU / totalCost) * 100;
 
                     if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
                     if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
                 } else {
-                    // 没有仓位时，只要有价格和之前有仓位，就显示当前亏损
                     if (realPosition > 0 && !isNaN(price)) {
-                        // 更新仓位价值
                         const currLossU = realPosition - totalCost;
                         const currLossPercent = (currLossU / totalCost) * 100;
                         if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
@@ -460,77 +545,39 @@
                     if (avgPriceEl) avgPriceEl.textContent = '-';
                 }
             });
-
-            // 汇总已移除
-            document.getElementById('dcaSummary').style.display = 'none';
         }
 
         // localStorage 缓存
         function saveDCAToStorage() {
-            const basePrice = document.getElementById('basePrice').value;
-            localStorage.setItem('dca_basePrice', basePrice);
-            localStorage.setItem('dca_rows', JSON.stringify(dcaRows));
-            localStorage.setItem('dca_rowIdCounter', rowIdCounter);
+            localStorage.setItem('dca_groups', JSON.stringify(dcaGroups));
+            localStorage.setItem('dca_groupIdCounter', groupIdCounter);
+            localStorage.setItem('dca_globalRowIdCounter', globalRowIdCounter);
         }
 
         function loadDCAFromStorage() {
-            const savedBasePrice = localStorage.getItem('dca_basePrice');
-            const savedRows = localStorage.getItem('dca_rows');
-            const savedCounter = localStorage.getItem('dca_rowIdCounter');
+            const savedGroups = localStorage.getItem('dca_groups');
+            const savedGroupCounter = localStorage.getItem('dca_groupIdCounter');
+            const savedRowCounter = localStorage.getItem('dca_globalRowIdCounter');
 
-            if (savedBasePrice) {
-                document.getElementById('basePrice').value = savedBasePrice;
+            if (savedGroups) {
+                dcaGroups = JSON.parse(savedGroups);
             }
-            if (savedRows) {
-                dcaRows = JSON.parse(savedRows);
+            if (savedGroupCounter) {
+                groupIdCounter = parseInt(savedGroupCounter);
             }
-            if (savedCounter) {
-                rowIdCounter = parseInt(savedCounter);
+            if (savedRowCounter) {
+                globalRowIdCounter = parseInt(savedRowCounter);
             }
 
-            if (dcaRows.length === 0) {
-                // 没有缓存数据，添加默认3行
-                addDCARow();
-                addDCARow();
-                addDCARow();
+            if (dcaGroups.length === 0) {
+                // 没有缓存数据，添加默认1个组
+                addDCAGroup();
             } else {
-                renderDCATable();
+                renderAllGroups();
             }
         }
 
-        // 修改 handleDCAInput 保存数据
-        const originalHandleDCAInput = handleDCAInput;
-        handleDCAInput = function (id, field, value) {
-            originalHandleDCAInput(id, field, value);
-            saveDCAToStorage();
-        };
-
-        // 修改其他函数保存数据
-        const originalAddDCARow = addDCARow;
-        addDCARow = function () {
-            originalAddDCARow();
-            saveDCAToStorage();
-        };
-
-        const originalRemoveDCARow = removeDCARow;
-        removeDCARow = function (id) {
-            originalRemoveDCARow(id);
-            saveDCAToStorage();
-        };
-
-        const originalClearDCAField = clearDCAField;
-        clearDCAField = function (id, field) {
-            originalClearDCAField(id, field);
-            saveDCAToStorage();
-        };
-
-        // 起始价变化时保存
-        document.getElementById('basePrice').addEventListener('input', function () {
-            renderDCATable();
-            saveDCAToStorage();
-        });
-
-        // 初始化：从缓存加载
+        // 初始化
         loadDCAFromStorage();
 
         function calculatePercentageChange() {
