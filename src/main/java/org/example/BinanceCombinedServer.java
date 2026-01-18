@@ -42,6 +42,10 @@ public class BinanceCombinedServer {
     private static final long INDEX_CALCULATION_INTERVAL_MS = 3 * 60 * 1000; // 3 分钟的毫秒数 (180,000 ms)
     private static volatile long lastIndexCalculationTime = 0; // 记录上次指数计算的时间点
 
+    // 🌟 新增配置：DCA 配置文件路径
+    private static final String DCA_FILE_PATH = "dca_settings_history.json";
+    private static volatile String dcaSettingsCache = "{\"groups\":[],\"groupIdCounter\":0,\"globalRowIdCounter\":0}";
+
     // ------------------- 数据模型 -------------------
     static class CandleRaw {
         BigDecimal open, high, low, close, volume;
@@ -118,6 +122,7 @@ public class BinanceCombinedServer {
 
     public static void main(String[] args) throws Exception {
         initProxy();
+        loadDcaSettingsFromFile();
         Spark.port(4567);
         Spark.staticFiles.location("/public");
 
@@ -139,6 +144,24 @@ public class BinanceCombinedServer {
             res.type("application/json; charset=UTF-8");
             return new GsonBuilder().setPrettyPrinting().create()
                     .toJson(strongCache.stream().map(StrongCoin::new).collect(Collectors.toList()));
+        });
+
+        // 🌟 新增接口：获取 DCA 配置
+        Spark.get("/dca-settings", (req, res) -> {
+            res.type("application/json; charset=UTF-8");
+            return dcaSettingsCache;
+        });
+
+        // 🌟 新增接口：同步 DCA 配置 (全量覆盖)
+        Spark.post("/dca-settings", (req, res) -> {
+            String body = req.body();
+            if (body != null && !body.isEmpty()) {
+                dcaSettingsCache = body;
+                saveDcaSettingsToFile(body);
+                return "{\"status\":\"ok\"}";
+            }
+            res.status(400);
+            return "{\"status\":\"error\",\"message\":\"Empty body\"}";
         });
 
     }
@@ -428,5 +451,31 @@ public class BinanceCombinedServer {
         System.setProperty("http.proxyPort", "7897");
         System.setProperty("https.proxyHost", "127.0.0.1");
         System.setProperty("https.proxyPort", "7897");
+    }
+
+    private static void saveDcaSettingsToFile(String json) {
+        try (PrintWriter out = new PrintWriter(new FileWriter(DCA_FILE_PATH))) {
+            out.print(json);
+            System.out.println("DCA 配置已保存至文件");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void loadDcaSettingsFromFile() {
+        File file = new File(DCA_FILE_PATH);
+        if (file.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                dcaSettingsCache = sb.toString();
+                System.out.println("已从文件加载 DCA 配置");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }

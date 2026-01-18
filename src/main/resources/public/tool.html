@@ -581,14 +581,64 @@
             });
         }
 
-        // localStorage 缓存
+        // localStorage 缓存和后端同步
+        let syncTimeout = null;
         function saveDCAToStorage() {
             localStorage.setItem('dca_groups', JSON.stringify(dcaGroups));
             localStorage.setItem('dca_groupIdCounter', groupIdCounter);
             localStorage.setItem('dca_globalRowIdCounter', globalRowIdCounter);
+
+            // 触发全量自动保存同步
+            debounceSyncToBackend();
         }
 
-        function loadDCAFromStorage() {
+        function debounceSyncToBackend() {
+            if (syncTimeout) clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(() => {
+                syncToBackend();
+            }, 1000); // 停止输入 1 秒后同步
+        }
+
+        async function syncToBackend() {
+            const data = {
+                groups: dcaGroups,
+                groupIdCounter: groupIdCounter,
+                globalRowIdCounter: globalRowIdCounter
+            };
+            try {
+                const response = await fetch('/dca-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    console.log('DCA 配置已全量同步到后端');
+                }
+            } catch (err) {
+                console.error('同步到后端失败:', err);
+            }
+        }
+
+        async function loadDCAFromStorage() {
+            // 1. 优先尝试从后端加载
+            try {
+                const response = await fetch('/dca-settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.groups && data.groups.length > 0) {
+                        dcaGroups = data.groups;
+                        groupIdCounter = data.groupIdCounter || 0;
+                        globalRowIdCounter = data.globalRowIdCounter || 0;
+                        renderAllGroups();
+                        console.log('已从后端加载 DCA 配置');
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('从后端加载失败，将尝试本地缓存:', err);
+            }
+
+            // 2. 备选方案：从 localStorage 加载
             const savedGroups = localStorage.getItem('dca_groups');
             const savedGroupCounter = localStorage.getItem('dca_groupIdCounter');
             const savedRowCounter = localStorage.getItem('dca_globalRowIdCounter');
@@ -604,7 +654,7 @@
             }
 
             if (dcaGroups.length === 0) {
-                // 没有缓存数据，添加默认1个组
+                // 没有缓存数据，添加默认 1 个组
                 addDCAGroup();
             } else {
                 renderAllGroups();
