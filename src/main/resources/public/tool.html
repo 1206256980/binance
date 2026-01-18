@@ -206,8 +206,10 @@
                     style="margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
                     ➕ 新增计算组
                 </button>
+                <span id="dcaSyncStatus" style="margin-left: 15px; font-size: 0.85em; color: #6c757d;"></span>
             </div>
         </div>
+    </div>
     </div>
 
     <script>
@@ -422,7 +424,7 @@
                             <input type="number" id="rise_${group.id}_${row.id}" value="${displayRise}" 
                                    placeholder="如14" step="any" 
                                    style="width: 80px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
-                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'rise', this.value)">
+                                   onchange="handleDCAInput(${group.id}, ${row.id}, 'rise', this.value)">
                             <span onclick="clearDCAField(${group.id}, ${row.id}, 'rise')" 
                                   style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
                         </div>
@@ -432,7 +434,7 @@
                             <input type="number" id="price_${group.id}_${row.id}" value="${displayPrice}" 
                                    placeholder="如1.0097" step="any" 
                                    style="width: 95px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
-                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'price', this.value)">
+                                   onchange="handleDCAInput(${group.id}, ${row.id}, 'price', this.value)">
                             <span onclick="clearDCAField(${group.id}, ${row.id}, 'price')" 
                                   style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
                         </div>
@@ -442,7 +444,7 @@
                             <input type="number" id="pos_${group.id}_${row.id}" value="${row.position}" 
                                    placeholder="如30" step="any" 
                                    style="width: 70px; padding: 8px 22px 8px 8px; border: 1px solid #ccc; border-radius: 4px;"
-                                   oninput="handleDCAInput(${group.id}, ${row.id}, 'position', this.value)">
+                                   onchange="handleDCAInput(${group.id}, ${row.id}, 'position', this.value)">
                             <span onclick="clearDCAField(${group.id}, ${row.id}, 'position')" 
                                   style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 16px; font-weight: bold;">&times;</span>
                         </div>
@@ -473,14 +475,14 @@
                         <input type="text" id="coinName_${group.id}" value="${group.coinName || ''}" 
                                placeholder="如 BTC" 
                                style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100px;"
-                               oninput="handleCoinNameInput(${group.id}, this.value)">
+                               onchange="handleCoinNameInput(${group.id}, this.value)">
                     </div>
                     <div class="input-group" style="flex: 0 0 auto;">
                         <label style="font-weight: bold; margin-right: 8px;">起始价：</label>
                         <input type="number" id="basePrice_${group.id}" value="${group.basePrice}" 
                                placeholder="如 0.8652" step="any" 
                                style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px;"
-                               oninput="handleBasePriceInput(${group.id}, this.value)">
+                               onchange="handleBasePriceInput(${group.id}, this.value)">
                     </div>
                 </div>
 
@@ -594,12 +596,23 @@
 
         function debounceSyncToBackend() {
             if (syncTimeout) clearTimeout(syncTimeout);
+            updateSyncStatus('正在输入...');
             syncTimeout = setTimeout(() => {
                 syncToBackend();
             }, 1000); // 停止输入 1 秒后同步
         }
 
+        function updateSyncStatus(text, color = '#6c757d') {
+            const el = document.getElementById('dcaSyncStatus');
+            if (el) {
+                el.textContent = text;
+                el.style.color = color;
+            }
+        }
+
         async function syncToBackend() {
+            if (syncTimeout) clearTimeout(syncTimeout);
+            updateSyncStatus('🔄 正在同步到服务器...');
             const data = {
                 groups: dcaGroups,
                 groupIdCounter: groupIdCounter,
@@ -613,9 +626,13 @@
                 });
                 if (response.ok) {
                     console.log('DCA 配置已全量同步到后端');
+                    updateSyncStatus('✅ 已同步到服务器', '#28a745');
+                } else {
+                    updateSyncStatus('❌ 同步失败', '#dc3545');
                 }
             } catch (err) {
                 console.error('同步到后端失败:', err);
+                updateSyncStatus('⚠️ 网络错误', '#dc3545');
             }
         }
 
