@@ -453,6 +453,7 @@
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="avgPrice_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="distPrev_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="recovery_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                         <button onclick="addDCARow(${group.id}, ${row.id})" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-right: 4px;" title="在下方添加一行">+</button>
                         <button onclick="removeDCARow(${group.id}, ${row.id})" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="删除此行">×</button>
@@ -498,6 +499,7 @@
                                 <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">当前亏损</th>
+                                <th style="padding: 8px; border: 1px solid #ddd;">回本%</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
                             </tr>
                         </thead>
@@ -540,6 +542,7 @@
                 const avgPriceEl = document.getElementById(`avgPrice_${groupId}_${row.id}`);
                 const distPrevEl = document.getElementById(`distPrev_${groupId}_${row.id}`);
                 const currLossEl = document.getElementById(`currLoss_${groupId}_${row.id}`);
+                const recoveryEl = document.getElementById(`recovery_${groupId}_${row.id}`);
 
 
                 if (!isNaN(price) && price > 0) {
@@ -568,14 +571,24 @@
                     if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
                     if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
+                    if (recoveryEl) {
+                        const recPercent = ((price - avgPrice) / price) * 100;
+                        recoveryEl.textContent = recPercent.toFixed(2) + '%';
+                    }
                 } else {
                     if (realPosition > 0 && !isNaN(price)) {
                         const currLossU = realPosition - totalCost;
                         const currLossPercent = (currLossU / totalCost) * 100;
                         if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
+                        if (recoveryEl) {
+                            // 虽然这一行没有 position (补仓)，但如果已经有持仓且有价格，依然可以计算回本 %
+                            // 这里需要获取到最后一个有效的成本价，但在循环中不好拿，通常只有补仓行有意义
+                            recoveryEl.textContent = '-';
+                        }
                         if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     } else {
                         if (currLossEl) currLossEl.textContent = '-';
+                        if (recoveryEl) recoveryEl.textContent = '-';
                         if (cumPosEl) cumPosEl.textContent = '-';
                     }
                     if (avgPriceEl) avgPriceEl.textContent = '-';
