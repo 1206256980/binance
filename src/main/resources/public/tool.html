@@ -581,9 +581,9 @@
                         const currLossPercent = (currLossU / totalCost) * 100;
                         if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
                         if (recoveryEl) {
-                            // 虽然这一行没有 position (补仓)，但如果已经有持仓且有价格，依然可以计算回本 %
-                            // 这里需要获取到最后一个有效的成本价，但在循环中不好拿，通常只有补仓行有意义
-                            recoveryEl.textContent = '-';
+                            const currentAvgPrice = (totalCost / realPosition) * price;
+                            const recPercent = ((price - currentAvgPrice) / price) * 100;
+                            recoveryEl.textContent = recPercent.toFixed(2) + '%';
                         }
                         if (cumPosEl) cumPosEl.textContent = realPosition.toFixed(2);
                     } else {
