@@ -44,7 +44,7 @@ public class BinanceCombinedServer {
 
     // 🌟 新增配置：DCA 配置文件路径
     private static final String DCA_FILE_PATH = "dca_settings_history.json";
-    private static volatile String dcaSettingsCache = "{\"groups\":[],\"groupIdCounter\":0,\"globalRowIdCounter\":0}";
+    private static volatile String dcaSettingsCache = "{\"groups\":[],\"groupIdCounter\":0,\"globalRowIdCounter\":0,\"globalWalletBalance\":\"\"}";
 
     // ------------------- 数据模型 -------------------
     static class CandleRaw {
