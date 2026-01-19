@@ -247,6 +247,7 @@
                 id: groupId,
                 coinName: '',
                 basePrice: '',
+                side: 'short', // 🌟 改为默认：空单 (Short)
                 includeInMargin: true, // 🌟 新增：是否计入全仓保证金
                 rows: []
             };
@@ -346,6 +347,16 @@
             const group = dcaGroups.find(g => g.id === groupId);
             if (group) {
                 group.includeInMargin = checked;
+                calculateDCA();
+                saveDCAToStorage();
+            }
+        }
+
+        // 处理多/空切换
+        function handleSideToggle(groupId, side) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                group.side = side;
                 calculateDCA();
                 saveDCAToStorage();
             }
@@ -496,7 +507,7 @@
             return `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <h3 id="groupTitle_${group.id}" style="margin: 0; color: #007bff;">📈 计算组 ${index + 1}${group.coinName ? ' - ' + group.coinName : ''}</h3>
+                        <h3 id="groupTitle_${group.id}" style="margin: 0; color: #007bff;">📈 计算组 ${index + 1}${group.coinName ? ' - ' + group.coinName : ''} (空单)</h3>
                         <label style="display: flex; align-items: center; gap: 5px; font-size: 0.9em; cursor: pointer; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd;">
                             <input type="checkbox" ${group.includeInMargin !== false ? 'checked' : ''} 
                                    onchange="handleMarginToggle(${group.id}, this.checked)">
@@ -599,7 +610,13 @@
 
                 // 只有开启了开关的组才计入全局统计
                 if (group.includeInMargin !== false) {
-                    totalRealValue += gRealPos;
+                    if (group.side === 'short') {
+                        // 【空】单盈亏：成本 - 现值
+                        totalRealValue += (gTotalCost * 2 - gRealPos);
+                    } else {
+                        // 【多】单盈亏：现值
+                        totalRealValue += gRealPos;
+                    }
                     totalCostValue += gTotalCost;
                 }
 
@@ -614,6 +631,7 @@
             dcaGroups.forEach(group => {
                 const stats = groupStats.find(s => s.id === group.id);
                 const basePrice = parseFloat(group.basePrice);
+                const isShort = group.side === 'short';
                 if (isNaN(basePrice) || basePrice <= 0) return;
 
                 let currentRealPos = 0;
@@ -652,60 +670,84 @@
                         currentTotalCost += position;
 
                         const avgPrice = (currentTotalCost / currentRealPos) * price;
-                        const currLossU = currentRealPos - currentTotalCost;
+                        // 盈亏计算按多/空不同
+                        const currLossU = isShort ? (currentTotalCost - currentRealPos) : (currentRealPos - currentTotalCost);
                         const currLossPercent = (currLossU / currentTotalCost) * 100;
 
                         if (cumPosEl) cumPosEl.textContent = currentRealPos.toFixed(2);
                         if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
                         if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
 
-                        // 🌟 用户新增：回本 %
+                        // 🌟 回本 % (按多/空逻辑)
                         if (recoveryEl) {
-                            const recPercent = ((price - avgPrice) / price) * 100;
-                            recoveryEl.textContent = recPercent.toFixed(2) + '%';
+                            // 多：(平均价 - 现价) / 现价 -> 还需要涨多少
+                            // 空：(现价 - 平均价) / 现价 -> 还需要跌多少
+                            const recPercent = isShort ? ((price - avgPrice) / price) * 100 : ((avgPrice - price) / price) * 100;
+                            recoveryEl.textContent = Math.max(0, recPercent).toFixed(2) + '%';
                         }
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
-                            const liqTarget = currentTotalCost - walletBalance - othersPnL;
-                            const liqPrice = currentRealPos > 0 ? Math.max(0, (liqTarget / currentRealPos) * price) : 0;
+                            // 其他仓位的盈亏
+                            const othersPnL = totalPnL - currLossU;
+                            // 强平目标点：Equity = 0 -> Balance + PnL_this + OthersPnL = 0
+                            // PnL_this = -(Balance + OthersPnL)
+                            const targetPnL = -(walletBalance + othersPnL);
+
+                            let liqPrice = 0;
+                            if (isShort) {
+                                // 空单：Cost - Value = TargetPnL -> Value = Cost - TargetPnL
+                                const liqValue = currentTotalCost - targetPnL;
+                                liqPrice = (liqValue / currentRealPos) * price;
+                            } else {
+                                // 多单：Value - Cost = TargetPnL -> Value = Cost + TargetPnL
+                                const liqValue = currentTotalCost + targetPnL;
+                                liqPrice = Math.max(0, (liqValue / currentRealPos) * price);
+                            }
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
-                            if (liqPrice <= 0 || liqPrice < price * 0.5) { // 简单逻辑判断颜色：如果是0或价格极低则显示绿色（安全）
-                                liqPriceEl.style.color = '#28a745';
-                            } else {
+                            // 颜色逻辑
+                            const isRisky = isShort ? (liqPrice > price && liqPrice < price * 1.5) : (liqPrice < price && liqPrice > price * 0.5);
+                            if (isRisky) {
                                 liqPriceEl.style.color = '#dc3545';
                                 liqPriceEl.style.fontWeight = 'bold';
+                            } else {
+                                liqPriceEl.style.color = '#28a745';
                             }
                         } else if (liqPriceEl) {
                             liqPriceEl.textContent = '-';
                         }
                     } else {
                         if (currentRealPos > 0 && !isNaN(price)) {
-                            const currLossU = currentRealPos - currentTotalCost;
+                            const currLossU = isShort ? (currentTotalCost - currentRealPos) : (currentRealPos - currentTotalCost);
                             const currLossPercent = (currLossU / currentTotalCost) * 100;
                             if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
                             if (cumPosEl) cumPosEl.textContent = currentRealPos.toFixed(2);
 
-                            // 🌟 用户新增：回本 % (未买入此行但有持仓时)
                             if (recoveryEl) {
                                 const currentAvgPrice = (currentTotalCost / currentRealPos) * price;
-                                const recPercent = ((price - currentAvgPrice) / price) * 100;
-                                recoveryEl.textContent = recPercent.toFixed(2) + '%';
+                                const recPercent = isShort ? ((price - currentAvgPrice) / price) * 100 : ((currentAvgPrice - price) / price) * 100;
+                                recoveryEl.textContent = Math.max(0, recPercent).toFixed(2) + '%';
                             }
 
                             if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                                const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
-                                const liqTarget = currentTotalCost - walletBalance - othersPnL;
-                                const liqPrice = currentRealPos > 0 ? Math.max(0, (liqTarget / currentRealPos) * price) : 0;
-
-                                liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
-                                if (liqPrice <= 0 || liqPrice < price * 0.5) {
-                                    liqPriceEl.style.color = '#28a745';
+                                const othersPnL = totalPnL - currLossU;
+                                const targetPnL = -(walletBalance + othersPnL);
+                                let liqPrice = 0;
+                                if (isShort) {
+                                    const liqValue = currentTotalCost - targetPnL;
+                                    liqPrice = (liqValue / currentRealPos) * price;
                                 } else {
+                                    const liqValue = currentTotalCost + targetPnL;
+                                    liqPrice = Math.max(0, (liqValue / currentRealPos) * price);
+                                }
+                                liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
+                                if (isShort ? (liqPrice > price && liqPrice < price * 1.5) : (liqPrice < price && liqPrice > price * 0.5)) {
                                     liqPriceEl.style.color = '#dc3545';
                                     liqPriceEl.style.fontWeight = 'bold';
+                                } else {
+                                    liqPriceEl.style.color = '#28a745';
+                                    liqPriceEl.style.fontWeight = 'normal';
                                 }
                             } else if (liqPriceEl) {
                                 liqPriceEl.textContent = '-';
@@ -788,7 +830,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data) {
-                        dcaGroups = data.groups || [];
+                        dcaGroups = (data.groups || []).map(g => ({ ...g, side: g.side || 'short' }));
                         groupIdCounter = data.groupIdCounter || 0;
                         globalRowIdCounter = data.globalRowIdCounter || 0;
                         dcaGlobalWalletBalance = data.globalWalletBalance || '';
@@ -813,7 +855,7 @@
             const savedGlobalBalance = localStorage.getItem('dca_globalWalletBalance');
 
             if (savedGroups) {
-                dcaGroups = JSON.parse(savedGroups);
+                dcaGroups = JSON.parse(savedGroups).map(g => ({ ...g, side: g.side || 'short' }));
             }
             if (savedGroupCounter) {
                 groupIdCounter = parseInt(savedGroupCounter);
