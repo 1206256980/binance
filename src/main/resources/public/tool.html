@@ -204,7 +204,7 @@
                     <label style="font-weight: bold; font-size: 1.1em; color: #0056b3;">💰 全仓钱包余额 (共享保证金)：</label>
                     <input type="number" id="globalWalletBalance" placeholder="输入全仓总可用余额" step="any"
                         style="padding: 10px; border: 2px solid #007bff; border-radius: 6px; width: 200px; font-size: 1em;"
-                        onchange="handleGlobalWalletBalanceInput(this.value)">
+                        oninput="handleGlobalWalletBalanceInput(this.value)">
                     <p style="font-size: 0.85em; color: #666; margin-top: 8px; margin-bottom: 0;">
                         💡 在全仓模式下，所有仓位共用此保证金。强平价会根据此余额及其他仓位的盈亏自动动态计算。
                     </p>
@@ -332,6 +332,13 @@
                 renderGroup(groupId);
                 saveDCAToStorage();
             }
+        }
+
+        // 处理全局钱包余额输入
+        function handleGlobalWalletBalanceInput(value) {
+            dcaGlobalWalletBalance = value;
+            calculateDCA(); // 触发全量重绘强平价
+            saveDCAToStorage();
         }
 
         // 处理保证金计算开关
@@ -551,12 +558,18 @@
         }
 
         // 计算所有组的DCA
-        function calculateDCA(specificGroupId = null) {
-            // 首先计算每个组的基本数据并汇总全局 PnL
+        function calculateDCA() {
+            // 获取最新的余额
+            const balanceInput = document.getElementById('globalWalletBalance');
+            if (balanceInput) {
+                dcaGlobalWalletBalance = balanceInput.value;
+            }
             const walletBalance = parseFloat(dcaGlobalWalletBalance) || 0;
-            let totalRealPosition = 0;
-            let totalCost = 0;
 
+            let totalRealValue = 0;
+            let totalCostValue = 0;
+
+            // 第一遍：汇总所有【已开启】组的最终市值和总成本
             const groupStats = dcaGroups.map(group => {
                 const basePrice = parseFloat(group.basePrice);
                 let gRealPos = 0;
@@ -584,18 +597,18 @@
                     });
                 }
 
-                // 🌟 只有开启了开关的组才计入全局统计
+                // 只有开启了开关的组才计入全局统计
                 if (group.includeInMargin !== false) {
-                    totalRealPosition += gRealPos;
-                    totalCost += gTotalCost;
+                    totalRealValue += gRealPos;
+                    totalCostValue += gTotalCost;
                 }
 
                 return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice };
             });
 
-            // 总未实现盈亏
-            const totalPnL = totalRealPosition - totalCost;
-            updateSyncStatus(`账户总亏损: ${totalPnL.toFixed(2)} | 保证金: ${walletBalance}`, totalPnL < 0 ? '#dc3545' : '#28a745');
+            // 更新账户汇总显示
+            const totalPnL = totalRealValue - totalCostValue;
+            updateSyncStatus(`账户总盈亏: ${totalPnL.toFixed(2)} | 保证金: ${walletBalance}`, totalPnL < 0 ? '#dc3545' : '#28a745');
 
             // 再次遍历更新 UI
             dcaGroups.forEach(group => {
@@ -654,7 +667,7 @@
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            const othersPnL = (totalRealPosition - currentRealPos) - (totalCost - currentTotalCost);
+                            const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
                             const liqTarget = currentTotalCost - walletBalance - othersPnL;
                             if (liqTarget <= 0) {
                                 liqPriceEl.textContent = '安全';
@@ -683,7 +696,7 @@
                             }
 
                             if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                                const othersPnL = (totalRealPosition - currentRealPos) - (totalCost - currentTotalCost);
+                                const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
                                 const liqTarget = currentTotalCost - walletBalance - othersPnL;
                                 if (liqTarget <= 0) {
                                     liqPriceEl.textContent = '安全';
