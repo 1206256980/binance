@@ -737,6 +737,10 @@
         }
 
         async function syncToBackend() {
+            if (dcaGroups.length === 0) {
+                console.log('检测到数据为空，跳过同步以同步保护服务器数据');
+                return;
+            }
             if (syncTimeout) clearTimeout(syncTimeout);
             updateSyncStatus('🔄 正在同步到服务器...');
             const data = {
