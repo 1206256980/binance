@@ -622,6 +622,7 @@
                     const liqPriceEl = document.getElementById(`liqPrice_${group.id}_${row.id}`);
                     const distPrevEl = document.getElementById(`distPrev_${group.id}_${row.id}`);
                     const currLossEl = document.getElementById(`currLoss_${group.id}_${row.id}`);
+                    const recoveryEl = document.getElementById(`recovery_${group.id}_${row.id}`);
 
                     if (!isNaN(price) && price > 0) {
                         const comparePrice = index === 0 ? basePrice : prevPrice;
