@@ -669,12 +669,12 @@
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
                             const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
                             const liqTarget = currentTotalCost - walletBalance - othersPnL;
-                            if (liqTarget <= 0) {
-                                liqPriceEl.textContent = '安全';
+                            const liqPrice = currentRealPos > 0 ? Math.max(0, (liqTarget / currentRealPos) * price) : 0;
+
+                            liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
+                            if (liqPrice <= 0 || liqPrice < price * 0.5) { // 简单逻辑判断颜色：如果是0或价格极低则显示绿色（安全）
                                 liqPriceEl.style.color = '#28a745';
                             } else {
-                                const liqPrice = (liqTarget / currentRealPos) * price;
-                                liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
                                 liqPriceEl.style.color = '#dc3545';
                                 liqPriceEl.style.fontWeight = 'bold';
                             }
@@ -698,12 +698,12 @@
                             if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
                                 const othersPnL = (totalRealValue - currentRealPos) - (totalCostValue - currentTotalCost);
                                 const liqTarget = currentTotalCost - walletBalance - othersPnL;
-                                if (liqTarget <= 0) {
-                                    liqPriceEl.textContent = '安全';
+                                const liqPrice = currentRealPos > 0 ? Math.max(0, (liqTarget / currentRealPos) * price) : 0;
+
+                                liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
+                                if (liqPrice <= 0 || liqPrice < price * 0.5) {
                                     liqPriceEl.style.color = '#28a745';
                                 } else {
-                                    const liqPrice = (liqTarget / currentRealPos) * price;
-                                    liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
                                     liqPriceEl.style.color = '#dc3545';
                                     liqPriceEl.style.fontWeight = 'bold';
                                 }
