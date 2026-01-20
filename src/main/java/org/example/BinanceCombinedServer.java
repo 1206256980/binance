@@ -4,6 +4,8 @@ import com.google.gson.*;
 import spark.Spark;
 
 import javax.net.ssl.HttpsURLConnection;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -19,7 +21,8 @@ public class BinanceCombinedServer {
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
     // 🌟 币安 API Key（用于获取 MMR 数据）
-    private static final String BINANCE_API_KEY = "mReoMvyLS4G2UsSroqXdWzzfOIj94drWP4gevc7vLmLIzvBrESdp82i2a0nOukUH";
+    private static final String BINANCE_API_KEY = "piFGDiG2hwjXzKiC0OfoP6CMhHSGcyWVDBhJlFNR7EZuS0ooZodwOScTQrx9uOXk";
+    private static final String BINANCE_SECRET_KEY = "UpUsxSklT2PCfxYgoDmMrQMMUoTTY4k73pEYNs9Gxg9vGpSdaFjrnhw13eHjUl4B";
     private static final int THREADS = 50;
     private static final int DEFAULT_REFRESH_SECONDS = 35;
     private static final String[] INTERVALS = { "5m", "10m", "15m", "30m", "40m", "50m", "60m", "120m", "240m" };
@@ -171,11 +174,13 @@ public class BinanceCombinedServer {
             res.type("application/json; charset=UTF-8");
             try {
                 String symbol = req.queryParams("symbol");
-                String url = "https://fapi.binance.com/fapi/v1/leverageBracket";
+                String baseUrl = "https://fapi.binance.com/fapi/v1/leverageBracket";
+                String queryParams = "";
                 if (symbol != null && !symbol.isEmpty()) {
-                    url += "?symbol=" + URLEncoder.encode(symbol, "UTF-8");
+                    queryParams = "symbol=" + URLEncoder.encode(symbol, "UTF-8");
                 }
-                String result = httpGetWithApiKey(url);
+                // 🌟 使用带签名的请求方法
+                String result = httpGetWithSignature(baseUrl, queryParams);
                 return result;
             } catch (Exception e) {
                 e.printStackTrace();
@@ -463,24 +468,117 @@ public class BinanceCombinedServer {
 
     // 🌟 新增：带 API Key 头部的 HTTP GET 请求（用于需要认证的接口）
     private static String httpGetWithApiKey(String urlStr) {
+        HttpsURLConnection conn = null;
         try {
             URL url = new URL(urlStr);
-            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(10000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setRequestProperty("X-MBX-APIKEY", BINANCE_API_KEY); // 🌟 添加 API Key 头部
-            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            conn.setRequestProperty("X-MBX-APIKEY", BINANCE_API_KEY);
+
+            int responseCode = conn.getResponseCode();
+
+            // 读取响应
+            InputStream is = (responseCode >= 200 && responseCode < 300)
+                    ? conn.getInputStream()
+                    : conn.getErrorStream();
+
+            if (is == null) {
+                return "{\"error\":\"No response from server, HTTP " + responseCode + "\"}";
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null)
                 sb.append(line);
             br.close();
-            return sb.toString();
+
+            String response = sb.toString();
+
+            // 如果是错误响应，包装成错误格式
+            if (responseCode >= 400) {
+                System.out.println("Binance API 错误 (HTTP " + responseCode + "): " + response);
+                return "{\"error\":\"Binance API error: " + response.replace("\"", "\\\"") + "\"}";
+            }
+
+            return response;
         } catch (Exception e) {
             e.printStackTrace();
-            return null;
+            return "{\"error\":\"" + e.getMessage() + "\"}";
+        }
+    }
+
+    // 🌟 新增：生成 HMAC SHA256 签名
+    private static String hmacSha256(String data, String secret) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secret.getBytes("UTF-8"), "HmacSHA256");
+        mac.init(secretKeySpec);
+        byte[] hash = mac.doFinal(data.getBytes("UTF-8"));
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1)
+                hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
+    }
+
+    // 🌟 新增：带签名的 Binance API 请求
+    private static String httpGetWithSignature(String baseUrl, String queryParams) {
+        try {
+            // 添加 timestamp
+            long timestamp = System.currentTimeMillis();
+            String params = (queryParams != null && !queryParams.isEmpty())
+                    ? queryParams + "&timestamp=" + timestamp
+                    : "timestamp=" + timestamp;
+
+            // 生成签名
+            String signature = hmacSha256(params, BINANCE_SECRET_KEY);
+            params += "&signature=" + signature;
+
+            String fullUrl = baseUrl + "?" + params;
+            System.out.println("请求 Binance API: " + fullUrl);
+
+            URL url = new URL(fullUrl);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            conn.setRequestProperty("X-MBX-APIKEY", BINANCE_API_KEY);
+
+            int responseCode = conn.getResponseCode();
+
+            InputStream is = (responseCode >= 200 && responseCode < 300)
+                    ? conn.getInputStream()
+                    : conn.getErrorStream();
+
+            if (is == null) {
+                return "{\"error\":\"No response from server, HTTP " + responseCode + "\"}";
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null)
+                sb.append(line);
+            br.close();
+
+            String response = sb.toString();
+
+            if (responseCode >= 400) {
+                System.out.println("Binance API 错误 (HTTP " + responseCode + "): " + response);
+                return "{\"error\":\"Binance API error: " + response.replace("\"", "\\\"") + "\"}";
+            }
+
+            return response;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{\"error\":\"" + e.getMessage() + "\"}";
         }
     }
 
