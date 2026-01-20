@@ -687,8 +687,8 @@
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            // 公式：LiqPrice = (Balance + TotalCost_curr + OthersBenefit) / (currentRealPos * (1 + MMR))
-                            const liqPrice = (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + MMR));
+                            // 🌟 公式修复：需要乘以当前价格 price，转化为具体价格
+                            const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + MMR));
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
                             // 颜色逻辑：强平价在现价上方 50% 以内标红
