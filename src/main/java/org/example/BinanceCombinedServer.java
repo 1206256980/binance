@@ -189,6 +189,26 @@ public class BinanceCombinedServer {
             }
         });
 
+        // 🌟 新增接口：获取标记价格
+        Spark.get("/mark-price", (req, res) -> {
+            res.type("application/json; charset=UTF-8");
+            try {
+                String symbol = req.queryParams("symbol");
+                if (symbol == null || symbol.isEmpty()) {
+                    res.status(400);
+                    return "{\"error\":\"Missing symbol\"}";
+                }
+                String url = "https://fapi.binance.com/fapi/v1/premiumIndex?symbol="
+                        + URLEncoder.encode(symbol, "UTF-8");
+                String result = httpGet(url);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                res.status(500);
+                return "{\"error\":\"" + e.getMessage() + "\"}";
+            }
+        });
+
     }
 
     // ------------------- 刷新逻辑 -------------------
