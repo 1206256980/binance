@@ -570,17 +570,14 @@
 
         // 计算所有组的DCA
         function calculateDCA() {
-            // 获取最新的余额
+            const MMR = 0.004; // 🌟 维持保证金率 (0.4%)
             const balanceInput = document.getElementById('globalWalletBalance');
             if (balanceInput) {
                 dcaGlobalWalletBalance = balanceInput.value;
             }
             const walletBalance = parseFloat(dcaGlobalWalletBalance) || 0;
 
-            let totalRealValue = 0;
-            let totalCostValue = 0;
-
-            // 第一遍：汇总所有【已开启】组的最终市值和总成本
+            // 第一遍：汇总所有【已开启】组在“最后价格”下的最终市值、总成本和 PnL
             const groupStats = dcaGroups.map(group => {
                 const basePrice = parseFloat(group.basePrice);
                 let gRealPos = 0;
@@ -608,35 +605,37 @@
                     });
                 }
 
-                // 只有开启了开关的组才计入全局统计
-                if (group.includeInMargin !== false) {
-                    if (group.side === 'short') {
-                        // 【空】单盈亏：成本 - 现值
-                        totalRealValue += (gTotalCost * 2 - gRealPos);
-                    } else {
-                        // 【多】单盈亏：现值
-                        totalRealValue += gRealPos;
-                    }
-                    totalCostValue += gTotalCost;
-                }
+                const isEnabled = group.includeInMargin !== false;
+                // 只有空单逻辑
+                const gPnL = isEnabled ? (gTotalCost - gRealPos) : 0;
+                const gMM = isEnabled ? (gRealPos * MMR) : 0;
 
-                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice };
+                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM };
             });
 
+            // 账户总盈亏和总维持保证金（用于 Cross Margin 强平价计算）
+            const totalPnL = groupStats.reduce((sum, s) => sum + s.gPnL, 0);
+            const totalMM = groupStats.reduce((sum, s) => sum + s.gMM, 0);
+
             // 更新账户汇总显示
-            const totalPnL = totalRealValue - totalCostValue;
             updateSyncStatus(`账户总盈亏: ${totalPnL.toFixed(2)} | 保证金: ${walletBalance}`, totalPnL < 0 ? '#dc3545' : '#28a745');
 
-            // 再次遍历更新 UI
+            // 第二遍：逐行计算并更新 UI
             dcaGroups.forEach(group => {
                 const stats = groupStats.find(s => s.id === group.id);
                 const basePrice = parseFloat(group.basePrice);
-                const isShort = group.side === 'short';
                 if (isNaN(basePrice) || basePrice <= 0) return;
 
                 let currentRealPos = 0;
                 let currentTotalCost = 0;
                 let prevPrice = null;
+
+                // 计算“除去本组以外”的其他组的总额外价值 (OthersBenefit)
+                // Liquidation Formula for Short: Equity = Balance + PnL_curr + PnL_others = MM_curr + MM_others
+                // (TotalCost_curr - Quantity_curr * P_liq / P_base_at_that_row * P_curr) + Balance + PnL_others = Quantity_curr * P_liq / P_base * P_curr * MMR + MM_others
+                // 在我们的简化模型中：Quantity_curr 即为 currentRealPos
+                // 简化公式：LiqPrice = (Balance + TotalCost_curr + PnL_others - MM_others) / (Quantity_curr * (1 + MMR))
+                const othersBenefit = (stats.isEnabled) ? (totalPnL - stats.gPnL) - (totalMM - stats.gMM) : totalPnL - totalMM;
 
                 group.rows.forEach((row, index) => {
                     let rise = parseFloat(row.rise);
@@ -668,97 +667,47 @@
                     if (!isNaN(price) && !isNaN(position) && position > 0) {
                         currentRealPos += position;
                         currentTotalCost += position;
+                    }
 
+                    // 哪怕这一行没填 position，只要有累计持仓，就渲染数据
+                    if (currentRealPos > 0 && !isNaN(price)) {
                         const avgPrice = (currentTotalCost / currentRealPos) * price;
-                        // 盈亏计算按多/空不同
-                        const currLossU = isShort ? (currentTotalCost - currentRealPos) : (currentRealPos - currentTotalCost);
+                        const currLossU = (currentTotalCost - currentRealPos);
                         const currLossPercent = (currLossU / currentTotalCost) * 100;
 
                         if (cumPosEl) cumPosEl.textContent = currentRealPos.toFixed(2);
                         if (avgPriceEl) avgPriceEl.textContent = avgPrice.toFixed(4);
                         if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
 
-                        // 🌟 回本 % (按多/空逻辑)
+                        // 回本 % (Short)
                         if (recoveryEl) {
-                            // 多：(平均价 - 现价) / 现价 -> 还需要涨多少
-                            // 空：(现价 - 平均价) / 现价 -> 还需要跌多少
-                            const recPercent = isShort ? ((price - avgPrice) / price) * 100 : ((avgPrice - price) / price) * 100;
+                            const recPercent = ((price - avgPrice) / price) * 100;
                             recoveryEl.textContent = Math.max(0, recPercent).toFixed(2) + '%';
                         }
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            // 其他仓位的盈亏
-                            const othersPnL = totalPnL - currLossU;
-                            // 强平目标点：Equity = 0 -> Balance + PnL_this + OthersPnL = 0
-                            // PnL_this = -(Balance + OthersPnL)
-                            const targetPnL = -(walletBalance + othersPnL);
-
-                            let liqPrice = 0;
-                            if (isShort) {
-                                // 空单：Cost - Value = TargetPnL -> Value = Cost - TargetPnL
-                                const liqValue = currentTotalCost - targetPnL;
-                                liqPrice = (liqValue / currentRealPos) * price;
-                            } else {
-                                // 多单：Value - Cost = TargetPnL -> Value = Cost + TargetPnL
-                                const liqValue = currentTotalCost + targetPnL;
-                                liqPrice = Math.max(0, (liqValue / currentRealPos) * price);
-                            }
+                            // 公式：LiqPrice = (Balance + TotalCost_curr + OthersBenefit) / (currentRealPos * (1 + MMR))
+                            const liqPrice = (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + MMR));
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
-                            // 颜色逻辑
-                            const isRisky = isShort ? (liqPrice > price && liqPrice < price * 1.5) : (liqPrice < price && liqPrice > price * 0.5);
-                            if (isRisky) {
+                            // 颜色逻辑：强平价在现价上方 50% 以内标红
+                            if (liqPrice > price && liqPrice < price * 1.5) {
                                 liqPriceEl.style.color = '#dc3545';
                                 liqPriceEl.style.fontWeight = 'bold';
                             } else {
                                 liqPriceEl.style.color = '#28a745';
+                                liqPriceEl.style.fontWeight = 'normal';
                             }
                         } else if (liqPriceEl) {
                             liqPriceEl.textContent = '-';
                         }
                     } else {
-                        if (currentRealPos > 0 && !isNaN(price)) {
-                            const currLossU = isShort ? (currentTotalCost - currentRealPos) : (currentRealPos - currentTotalCost);
-                            const currLossPercent = (currLossU / currentTotalCost) * 100;
-                            if (currLossEl) currLossEl.textContent = currLossU.toFixed(2) + '（' + currLossPercent.toFixed(2) + '%）';
-                            if (cumPosEl) cumPosEl.textContent = currentRealPos.toFixed(2);
-
-                            if (recoveryEl) {
-                                const currentAvgPrice = (currentTotalCost / currentRealPos) * price;
-                                const recPercent = isShort ? ((price - currentAvgPrice) / price) * 100 : ((currentAvgPrice - price) / price) * 100;
-                                recoveryEl.textContent = Math.max(0, recPercent).toFixed(2) + '%';
-                            }
-
-                            if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                                const othersPnL = totalPnL - currLossU;
-                                const targetPnL = -(walletBalance + othersPnL);
-                                let liqPrice = 0;
-                                if (isShort) {
-                                    const liqValue = currentTotalCost - targetPnL;
-                                    liqPrice = (liqValue / currentRealPos) * price;
-                                } else {
-                                    const liqValue = currentTotalCost + targetPnL;
-                                    liqPrice = Math.max(0, (liqValue / currentRealPos) * price);
-                                }
-                                liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
-                                if (isShort ? (liqPrice > price && liqPrice < price * 1.5) : (liqPrice < price && liqPrice > price * 0.5)) {
-                                    liqPriceEl.style.color = '#dc3545';
-                                    liqPriceEl.style.fontWeight = 'bold';
-                                } else {
-                                    liqPriceEl.style.color = '#28a745';
-                                    liqPriceEl.style.fontWeight = 'normal';
-                                }
-                            } else if (liqPriceEl) {
-                                liqPriceEl.textContent = '-';
-                            }
-                        } else {
-                            if (currLossEl) currLossEl.textContent = '-';
-                            if (cumPosEl) cumPosEl.textContent = '-';
-                            if (liqPriceEl) liqPriceEl.textContent = '-';
-                            if (recoveryEl) recoveryEl.textContent = '-';
-                        }
+                        if (cumPosEl) cumPosEl.textContent = '-';
                         if (avgPriceEl) avgPriceEl.textContent = '-';
+                        if (currLossEl) currLossEl.textContent = '-';
+                        if (recoveryEl) recoveryEl.textContent = '-';
+                        if (liqPriceEl) liqPriceEl.textContent = '-';
                     }
                 });
             });
