@@ -752,7 +752,10 @@
                     </td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="cumPos_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="avgPrice_${group.id}_${row.id}">-</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="liqPrice_${group.id}_${row.id}">-</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center; min-width: 120px;">
+                        <div id="liqPrice_${group.id}_${row.id}">-</div>
+                        <div id="distLiq_${group.id}_${row.id}" style="font-size: 0.85em; margin-top: 2px; opacity: 0.9;"></div>
+                    </td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="distPrev_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="recovery_${group.id}_${row.id}">-</td>
@@ -810,7 +813,7 @@
                                 <th style="padding: 8px; border: 1px solid #ddd;">仓位</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">累计仓位</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">成本价</th>
-                                <th style="padding: 8px; border: 1px solid #ddd; color: #dc3545;">强平价</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; color: #dc3545;">强平价(距强平%)</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">距上次%</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">当前亏损</th>
                                 <th style="padding: 8px; border: 1px solid #ddd;">回本%</th>
@@ -922,6 +925,7 @@
                     const cumPosEl = document.getElementById(`cumPos_${group.id}_${row.id}`);
                     const avgPriceEl = document.getElementById(`avgPrice_${group.id}_${row.id}`);
                     const liqPriceEl = document.getElementById(`liqPrice_${group.id}_${row.id}`);
+                    const distLiqEl = document.getElementById(`distLiq_${group.id}_${row.id}`);
                     const distPrevEl = document.getElementById(`distPrev_${group.id}_${row.id}`);
                     const currLossEl = document.getElementById(`currLoss_${group.id}_${row.id}`);
                     const recoveryEl = document.getElementById(`recovery_${group.id}_${row.id}`);
@@ -966,6 +970,14 @@
                             const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit + currentCum) / (currentRealPos * (1 + currentMMR));
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
+
+                            // 🌟 计算距离强平还有几个点
+                            if (distLiqEl) {
+                                const distLiq = ((liqPrice - price) / price) * 100;
+                                distLiqEl.textContent = `(${distLiq.toFixed(2)}%)`;
+                                distLiqEl.style.color = liqPriceEl.style.color;
+                                distLiqEl.style.fontWeight = liqPriceEl.style.fontWeight;
+                            }
                             // 颜色逻辑：强平价在现价上方 50% 以内标红
                             if (liqPrice > price && liqPrice < price * 1.5) {
                                 liqPriceEl.style.color = '#dc3545';
@@ -983,6 +995,7 @@
                         if (currLossEl) currLossEl.textContent = '-';
                         if (recoveryEl) recoveryEl.textContent = '-';
                         if (liqPriceEl) liqPriceEl.textContent = '-';
+                        if (distLiqEl) distLiqEl.textContent = '-';
                     }
                 });
             });
