@@ -218,6 +218,10 @@
                     style="margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
                     ➕ 新增计算组
                 </button>
+                <button onclick="refreshMMRCache()"
+                    style="margin-top: 15px; margin-left: 10px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em;">
+                    🔄 刷新 MMR 数据
+                </button>
                 <span id="dcaSyncStatus" style="margin-left: 15px; font-size: 0.85em; color: #6c757d;"></span>
             </div>
         </div>
@@ -230,6 +234,116 @@
         let groupIdCounter = 0;
         let globalRowIdCounter = 0;
         let dcaGlobalWalletBalance = ''; // 🌟 新增：全局钱包余额
+
+        // ========== MMR (维持保证金率) 管理 ==========
+
+        // 初始化 MMR 缓存
+        async function initMMRCache() {
+            const cache = localStorage.getItem('mmr_cache');
+            const cacheTimestamp = localStorage.getItem('mmr_cache_timestamp');
+            const now = Date.now();
+
+            // 缓存24小时后过期
+            if (!cache || !cacheTimestamp || (now - parseInt(cacheTimestamp)) > 86400000) {
+                console.log('MMR 缓存为空或已过期，正在从币安获取...');
+                await fetchAllLeverageBrackets();
+            } else {
+                console.log('MMR 缓存已加载');
+            }
+        }
+
+        // 获取所有交易对的杠杆分层信息
+        async function fetchAllLeverageBrackets() {
+            try {
+                updateSyncStatus('🔄 正在获取 MMR 数据...', '#007bff');
+                const response = await fetch('https://fapi.binance.com/fapi/v1/leverageBracket');
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // 转换为 Map 格式：symbol -> brackets
+                const mmrMap = {};
+                data.forEach(item => {
+                    mmrMap[item.symbol] = item.brackets;
+                });
+
+                localStorage.setItem('mmr_cache', JSON.stringify(mmrMap));
+                localStorage.setItem('mmr_cache_timestamp', Date.now().toString());
+
+                console.log(`成功缓存 ${Object.keys(mmrMap).length} 个交易对的 MMR 数据`);
+                updateSyncStatus('✅ MMR 数据已更新', '#28a745');
+
+                return mmrMap;
+            } catch (error) {
+                console.error('获取 MMR 数据失败:', error);
+                updateSyncStatus('⚠️ MMR 数据获取失败，使用默认值', '#dc3545');
+                return null;
+            }
+        }
+
+        // 获取单个交易对的 MMR 信息（懒加载）
+        async function getMMRForSymbol(symbol) {
+            // 先检查缓存
+            const cache = JSON.parse(localStorage.getItem('mmr_cache') || '{}');
+
+            if (cache[symbol]) {
+                return cache[symbol];
+            }
+
+            // 如果缓存中没有，按需拉取
+            try {
+                console.log(`正在获取 ${symbol} 的 MMR...`);
+                const response = await fetch(`https://fapi.binance.com/fapi/v1/leverageBracket?symbol=${symbol}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data && data[0]) {
+                    // 添加到缓存
+                    cache[symbol] = data[0].brackets;
+                    localStorage.setItem('mmr_cache', JSON.stringify(cache));
+
+                    console.log(`成功获取 ${symbol} 的 MMR`);
+                    return data[0].brackets;
+                }
+            } catch (error) {
+                console.error(`获取 ${symbol} 的 MMR 失败:`, error);
+            }
+
+            return null;
+        }
+
+        // 根据名义价值计算当前适用的 MMR
+        function getCurrentMMR(brackets, notionalValue) {
+            if (!brackets || brackets.length === 0) {
+                return 0.004; // 默认 0.4%
+            }
+
+            // 查找适用的层级
+            for (let bracket of brackets) {
+                if (notionalValue >= bracket.notionalFloor &&
+                    notionalValue < bracket.notionalCap) {
+                    return bracket.maintMarginRatio;
+                }
+            }
+
+            // 如果超过所有层级，使用最后一层
+            return brackets[brackets.length - 1].maintMarginRatio;
+        }
+
+        // 手动刷新 MMR 缓存
+        async function refreshMMRCache() {
+            localStorage.removeItem('mmr_cache');
+            localStorage.removeItem('mmr_cache_timestamp');
+            await fetchAllLeverageBrackets();
+            calculateDCA(); // 重新计算
+        }
 
         // 获取数字的小数位数
         function getDecimalPlaces(numStr) {
@@ -249,6 +363,7 @@
                 basePrice: '',
                 side: 'short', // 🌟 改为默认：空单 (Short)
                 includeInMargin: true, // 🌟 新增：是否计入全仓保证金
+                leverageBrackets: null, // 🌟 新增：该币种的杠杆分层信息
                 rows: []
             };
             // 默认添加3行
@@ -312,7 +427,7 @@
         }
 
         // 处理币名输入
-        function handleCoinNameInput(groupId, value) {
+        async function handleCoinNameInput(groupId, value) {
             const group = dcaGroups.find(g => g.id === groupId);
             if (group) {
                 group.coinName = value;
@@ -321,8 +436,88 @@
                 if (titleEl) {
                     titleEl.textContent = `📈 计算组 ${dcaGroups.findIndex(g => g.id === groupId) + 1}${value ? ' - ' + value : ''}`;
                 }
+
+                // 🌟 自动获取该币种的 MMR
+                if (value && value.trim() !== '') {
+                    const symbol = value.toUpperCase();
+                    const brackets = await getMMRForSymbol(symbol);
+
+                    if (brackets) {
+                        group.leverageBrackets = brackets;
+
+                        // 更新 MMR 显示
+                        updateMMRDisplay(groupId);
+
+                        // 重新计算（使用新的 MMR）
+                        calculateDCA();
+                    }
+                }
+
                 saveDCAToStorage();
             }
+        }
+
+        // 更新 MMR 显示
+        function updateMMRDisplay(groupId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const mmrDisplayEl = document.getElementById(`mmr_display_${groupId}`);
+            if (!mmrDisplayEl) return;
+
+            if (!group.leverageBrackets) {
+                mmrDisplayEl.textContent = 'MMR: --';
+                mmrDisplayEl.style.color = '#666';
+                return;
+            }
+
+            // 计算当前名义价值
+            const notionalValue = calculateGroupNotionalValue(group);
+            const mmr = getCurrentMMR(group.leverageBrackets, notionalValue);
+
+            // 查找当前层级
+            let tier = 1;
+            for (let i = 0; i < group.leverageBrackets.length; i++) {
+                const bracket = group.leverageBrackets[i];
+                if (notionalValue >= bracket.notionalFloor && notionalValue < bracket.notionalCap) {
+                    tier = i + 1;
+                    break;
+                }
+            }
+
+            mmrDisplayEl.textContent = `MMR: ${(mmr * 100).toFixed(2)}% (第${tier}层)`;
+            mmrDisplayEl.style.color = mmr > 0.005 ? '#dc3545' : '#28a745';
+        }
+
+        // 计算组的名义价值
+        function calculateGroupNotionalValue(group) {
+            const basePrice = parseFloat(group.basePrice);
+            if (isNaN(basePrice) || basePrice <= 0) return 0;
+
+            let totalValue = 0;
+            let prevPrice = null;
+            let currentRealPos = 0;
+
+            group.rows.forEach(row => {
+                let price = parseFloat(row.price);
+                if (row.rise !== '' && !isNaN(parseFloat(row.rise))) {
+                    price = basePrice * (1 + parseFloat(row.rise) / 100);
+                }
+                const position = parseFloat(row.position);
+
+                if (!isNaN(price) && price > 0) {
+                    if (prevPrice && currentRealPos > 0) {
+                        currentRealPos = currentRealPos * (price / prevPrice);
+                    }
+                    prevPrice = price;
+                }
+
+                if (!isNaN(price) && !isNaN(position) && position > 0) {
+                    currentRealPos += position;
+                }
+            });
+
+            return prevPrice ? currentRealPos * prevPrice : 0;
         }
 
         // 处理起始价输入
@@ -552,9 +747,13 @@
                     <div class="input-group" style="flex: 0 0 auto;">
                         <label style="font-weight: bold; margin-right: 8px;">币名：</label>
                         <input type="text" id="coinName_${group.id}" value="${group.coinName || ''}" 
-                               placeholder="如 BTC" 
-                               style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100px;"
+                               placeholder="如 BTCUSDT" 
+                               style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 120px;"
                                onchange="handleCoinNameInput(${group.id}, this.value)">
+                        <span id="mmr_display_${group.id}" 
+                              style="margin-left: 10px; padding: 4px 10px; background: #e9ecef; border-radius: 4px; font-size: 0.85em; color: #666;">
+                            MMR: --
+                        </span>
                     </div>
                     <div class="input-group" style="flex: 0 0 auto;">
                         <label style="font-weight: bold; margin-right: 8px;">起始价：</label>
@@ -637,11 +836,15 @@
                 }
 
                 const isEnabled = group.includeInMargin !== false;
+                // 🌟 计算该组当前的名义价值和 MMR
+                const notionalValue = prevPrice ? gRealPos * prevPrice : 0;
+                const groupMMR = getCurrentMMR(group.leverageBrackets, notionalValue);
+
                 // 只有空单逻辑
                 const gPnL = isEnabled ? (gTotalCost - gRealPos) : 0;
-                const gMM = isEnabled ? (gRealPos * MMR) : 0;
+                const gMM = isEnabled ? (gRealPos * groupMMR) : 0;
 
-                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM };
+                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM, groupMMR };
             });
 
             // 账户总盈亏、总维持保证金
@@ -719,8 +922,9 @@
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            // 🌟 公式修复：需要乘以当前价格 price，转化为具体价格
-                            const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + MMR));
+                            // 🌟 使用该组的动态 MMR
+                            const currentMMR = stats.groupMMR || 0.004;
+                            const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + currentMMR));
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
                             // 颜色逻辑：强平价在现价上方 50% 以内标红
@@ -922,6 +1126,9 @@
 
         calculatePercentageChange();
         calculateAdjustedPrice();
+
+        // 🌟 初始化 MMR 缓存
+        initMMRCache();
 
     </script>
 
