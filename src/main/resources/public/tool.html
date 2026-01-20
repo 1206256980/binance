@@ -334,19 +334,20 @@
         // 根据名义价值计算当前适用的 MMR
         function getCurrentMMR(brackets, notionalValue) {
             if (!brackets || brackets.length === 0) {
-                return 0.004; // 默认 0.4%
+                return { mmr: 0.004, cum: 0 };
             }
 
             // 查找适用的层级
             for (let bracket of brackets) {
                 if (notionalValue >= bracket.notionalFloor &&
                     notionalValue < bracket.notionalCap) {
-                    return bracket.maintMarginRatio;
+                    return { mmr: bracket.maintMarginRatio, cum: bracket.cum || 0 };
                 }
             }
 
             // 如果超过所有层级，使用最后一层
-            return brackets[brackets.length - 1].maintMarginRatio;
+            const last = brackets[brackets.length - 1];
+            return { mmr: last.maintMarginRatio, cum: last.cum || 0 };
         }
 
         // 手动刷新 MMR 缓存
@@ -485,7 +486,7 @@
 
             // 计算当前名义价值
             const notionalValue = calculateGroupNotionalValue(group);
-            const mmr = getCurrentMMR(group.leverageBrackets, notionalValue);
+            const { mmr } = getCurrentMMR(group.leverageBrackets, notionalValue);
 
             // 查找当前层级
             let tier = 1;
@@ -868,14 +869,15 @@
 
                 const isEnabled = group.includeInMargin !== false;
                 // 🌟 计算该组当前的名义价值和 MMR
-                const notionalValue = prevPrice ? gRealPos * prevPrice : 0;
-                const groupMMR = getCurrentMMR(group.leverageBrackets, notionalValue);
+                const notionalValue = gRealPos; // gRealPos 已经是 USDT 价值
+                const { mmr: groupMMR, cum: groupCum } = getCurrentMMR(group.leverageBrackets, notionalValue);
 
                 // 只有空单逻辑
                 const gPnL = isEnabled ? (gTotalCost - gRealPos) : 0;
-                const gMM = isEnabled ? (gRealPos * groupMMR) : 0;
+                // 维持保证金 = 名义价值 * MMR - 维持保证金速算额(CUM)
+                const gMM = isEnabled ? (gRealPos * groupMMR - groupCum) : 0;
 
-                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM, groupMMR };
+                return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM, groupMMR, groupCum };
             });
 
             // 账户总盈亏、总维持保证金
@@ -953,9 +955,11 @@
 
                         // 强平价计算 (Cross Margin)
                         if (walletBalance > 0 && liqPriceEl && group.includeInMargin !== false) {
-                            // 🌟 使用该组的动态 MMR
+                            // 🌟 使用该组的动态 MMR 和速算额(CUM)
                             const currentMMR = stats.groupMMR || 0.004;
-                            const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit) / (currentRealPos * (1 + currentMMR));
+                            const currentCum = stats.groupCum || 0;
+                            // 公式: (钱包余额 + 本组持仓成本 + 其他组权益贡献 + 本组维持保证金速算额) / (本组持仓数量 * (1 + MMR))
+                            const liqPrice = price * (walletBalance + currentTotalCost + othersBenefit + currentCum) / (currentRealPos * (1 + currentMMR));
 
                             liqPriceEl.textContent = liqPrice.toFixed(priceDecimals);
                             // 颜色逻辑：强平价在现价上方 50% 以内标红
