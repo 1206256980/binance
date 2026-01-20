@@ -432,7 +432,12 @@
             if (group) {
                 const row = group.rows.find(r => r.id === rowId);
                 if (row) {
-                    row[field] = '';
+                    if (field === 'rise' || field === 'price') {
+                        row.rise = '';
+                        row.price = '';
+                    } else {
+                        row[field] = '';
+                    }
                     renderGroup(groupId);
                     saveDCAToStorage();
                 }
@@ -647,33 +652,6 @@
             saveDCAToStorage();
         }
 
-        // 🌟 新增：从 DOM 暴力同步所有输入到内存变量
-        // 防止多计算组状态由于渲染延迟导致计算不准
-        function syncGroupsFromDOM() {
-            dcaGroups.forEach(group => {
-                // 读取主表的起始价
-                const bpInput = document.getElementById(`basePrice_${group.id}`);
-                if (bpInput) group.basePrice = bpInput.value;
-
-                // 读取币种名 (如果有)
-                const cnInput = document.getElementById(`coinName_${group.id}`);
-                if (cnInput) group.coinName = cnInput.value;
-
-                // 读取每一行
-                group.rows.forEach(row => {
-                    const riseInput = document.getElementById(`rise_${group.id}_${row.id}`);
-                    const priceInput = document.getElementById(`price_${group.id}_${row.id}`);
-                    const posInput = document.getElementById(`pos_${group.id}_${row.id}`);
-
-                    if (riseInput) row.rise = riseInput.value;
-                    if (priceInput) row.price = priceInput.value;
-                    if (posInput) row.position = posInput.value;
-                });
-            });
-            // 余额
-            const balanceInput = document.getElementById('globalWalletBalance');
-            if (balanceInput) dcaGlobalWalletBalance = balanceInput.value;
-        }
 
         // 渲染所有组
         function renderAllGroups() {
@@ -877,8 +855,7 @@
 
         // 计算所有组的DCA
         function calculateDCA() {
-            // 1. 🌟 第一步：从 DOM 刷新所有数据
-            syncGroupsFromDOM();
+            // 获取最新的余额
 
             const MMR = 0.004; // 🌟 维持保证金率 (0.4%)
             const balanceInput = document.getElementById('globalWalletBalance');
