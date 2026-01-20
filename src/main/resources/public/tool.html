@@ -362,7 +362,7 @@
             }
         }
 
-        // 处理行输入
+        // 处理行输入 (保持原有函数，供局部调用)
         function handleDCAInput(groupId, rowId, field, value) {
             const group = dcaGroups.find(g => g.id === groupId);
             if (!group) return;
@@ -395,8 +395,36 @@
                 }
             }
 
-            calculateDCA(groupId);
+            calculateDCA();
             saveDCAToStorage();
+        }
+
+        // 🌟 新增：从 DOM 暴力同步所有输入到内存变量
+        // 防止多计算组状态由于渲染延迟导致计算不准
+        function syncGroupsFromDOM() {
+            dcaGroups.forEach(group => {
+                // 读取主表的起始价
+                const bpInput = document.getElementById(`basePrice_${group.id}`);
+                if (bpInput) group.basePrice = bpInput.value;
+
+                // 读取币种名 (如果有)
+                const cnInput = document.getElementById(`coinName_${group.id}`);
+                if (cnInput) group.coinName = cnInput.value;
+
+                // 读取每一行
+                group.rows.forEach(row => {
+                    const riseInput = document.getElementById(`rise_${group.id}_${row.id}`);
+                    const priceInput = document.getElementById(`price_${group.id}_${row.id}`);
+                    const posInput = document.getElementById(`pos_${group.id}_${row.id}`);
+
+                    if (riseInput) row.rise = riseInput.value;
+                    if (priceInput) row.price = priceInput.value;
+                    if (posInput) row.position = posInput.value;
+                });
+            });
+            // 余额
+            const balanceInput = document.getElementById('globalWalletBalance');
+            if (balanceInput) dcaGlobalWalletBalance = balanceInput.value;
         }
 
         // 渲染所有组
@@ -570,6 +598,9 @@
 
         // 计算所有组的DCA
         function calculateDCA() {
+            // 1. 🌟 第一步：从 DOM 刷新所有数据
+            syncGroupsFromDOM();
+
             const MMR = 0.004; // 🌟 维持保证金率 (0.4%)
             const balanceInput = document.getElementById('globalWalletBalance');
             if (balanceInput) {
@@ -613,12 +644,13 @@
                 return { id: group.id, gRealPos, gTotalCost, lastPrice: prevPrice, isEnabled, gPnL, gMM };
             });
 
-            // 账户总盈亏和总维持保证金（用于 Cross Margin 强平价计算）
+            // 账户总盈亏、总维持保证金
             const totalPnL = groupStats.reduce((sum, s) => sum + s.gPnL, 0);
             const totalMM = groupStats.reduce((sum, s) => sum + s.gMM, 0);
+            const equity = walletBalance + totalPnL; // 🌟 账户实收权益
 
             // 更新账户汇总显示
-            updateSyncStatus(`账户总盈亏: ${totalPnL.toFixed(2)} | 保证金: ${walletBalance}`, totalPnL < 0 ? '#dc3545' : '#28a745');
+            updateSyncStatus(`账户总盈亏: ${totalPnL.toFixed(2)} | 账户权益 (Equity): ${equity.toFixed(2)} | 总维持保证金: ${totalMM.toFixed(2)}`, totalPnL < 0 ? '#dc3545' : '#28a745');
 
             // 第二遍：逐行计算并更新 UI
             dcaGroups.forEach(group => {
