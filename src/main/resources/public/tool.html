@@ -588,6 +588,16 @@
             }
         }
 
+        // 处理起始价输入
+        function handleBasePriceInput(groupId, value) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (group) {
+                group.basePrice = value;
+                renderGroup(groupId);
+                saveDCAToStorage();
+            }
+        }
+
         // 处理全局钱包余额输入
         function handleGlobalWalletBalanceInput(value) {
             dcaGlobalWalletBalance = value;
