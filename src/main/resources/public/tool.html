@@ -649,6 +649,25 @@
 
                 calculateDCA(group.id);
             });
+
+            // 🌟 为已有币名的组自动获取 MMR
+            fetchMMRForSavedGroups();
+        }
+
+        // 🌟 新增：为已保存的组获取 MMR
+        async function fetchMMRForSavedGroups() {
+            for (const group of dcaGroups) {
+                if (group.coinName && group.coinName.trim() !== '' && !group.leverageBrackets) {
+                    const symbol = group.coinName.toUpperCase();
+                    const brackets = await getMMRForSymbol(symbol);
+                    if (brackets) {
+                        group.leverageBrackets = brackets;
+                        updateMMRDisplay(group.id);
+                    }
+                }
+            }
+            // 重新计算所有组
+            calculateDCA();
         }
 
         // 渲染单个组
