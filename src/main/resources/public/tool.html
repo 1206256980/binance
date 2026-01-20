@@ -658,13 +658,17 @@
         // 🌟 新增：为已保存的组获取 MMR
         async function fetchMMRForSavedGroups() {
             for (const group of dcaGroups) {
-                if (group.coinName && group.coinName.trim() !== '' && !group.leverageBrackets) {
+                if (group.coinName && group.coinName.trim() !== '') {
                     const symbol = group.coinName.toUpperCase();
-                    const brackets = await getMMRForSymbol(symbol);
-                    if (brackets) {
-                        group.leverageBrackets = brackets;
-                        updateMMRDisplay(group.id);
+                    // 如果还没有杠杆分层信息，则获取
+                    if (!group.leverageBrackets) {
+                        const brackets = await getMMRForSymbol(symbol);
+                        if (brackets) {
+                            group.leverageBrackets = brackets;
+                        }
                     }
+                    // 🌟 无论数据是刚获取的还是已经存在的，都强制更新一次 UI 显示
+                    updateMMRDisplay(group.id);
                 }
             }
             // 重新计算所有组
