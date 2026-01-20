@@ -18,6 +18,8 @@ public class BinanceCombinedServer {
     // ------------------- 公共配置 -------------------
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
+    // 🌟 币安 API Key（用于获取 MMR 数据）
+    private static final String BINANCE_API_KEY = "mReoMvyLS4G2UsSroqXdWzzfOIj94drWP4gevc7vLmLIzvBrESdp82i2a0nOukUH";
     private static final int THREADS = 50;
     private static final int DEFAULT_REFRESH_SECONDS = 35;
     private static final String[] INTERVALS = { "5m", "10m", "15m", "30m", "40m", "50m", "60m", "120m", "240m" };
@@ -162,6 +164,24 @@ public class BinanceCombinedServer {
             }
             res.status(400);
             return "{\"status\":\"error\",\"message\":\"Empty body\"}";
+        });
+
+        // 🌟 新增接口：代理获取 MMR 数据（因为币安 API 需要 CORS 或认证）
+        Spark.get("/mmr-data", (req, res) -> {
+            res.type("application/json; charset=UTF-8");
+            try {
+                String symbol = req.queryParams("symbol");
+                String url = "https://fapi.binance.com/fapi/v1/leverageBracket";
+                if (symbol != null && !symbol.isEmpty()) {
+                    url += "?symbol=" + URLEncoder.encode(symbol, "UTF-8");
+                }
+                String result = httpGetWithApiKey(url);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                res.status(500);
+                return "{\"error\":\"" + e.getMessage() + "\"}";
+            }
         });
 
     }
@@ -428,6 +448,29 @@ public class BinanceCombinedServer {
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(10000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null)
+                sb.append(line);
+            br.close();
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    // 🌟 新增：带 API Key 头部的 HTTP GET 请求（用于需要认证的接口）
+    private static String httpGetWithApiKey(String urlStr) {
+        try {
+            URL url = new URL(urlStr);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            conn.setRequestProperty("X-MBX-APIKEY", BINANCE_API_KEY); // 🌟 添加 API Key 头部
             BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
