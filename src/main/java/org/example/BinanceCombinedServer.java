@@ -1,6 +1,7 @@
 package org.example;
 
 import com.google.gson.*;
+import com.google.gson.annotations.SerializedName;
 import spark.Spark;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -850,17 +851,23 @@ public class BinanceCombinedServer {
 
     private static void loadPriceAlertsFromFile() {
         File file = new File(PRICE_ALERT_FILE_PATH);
+        System.out.println("正在尝试加载价格提醒文件: " + file.getAbsolutePath());
         if (file.exists()) {
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 Gson gson = new Gson();
                 PriceAlert[] alerts = gson.fromJson(reader, PriceAlert[].class);
                 if (alerts != null) {
                     priceAlerts = new CopyOnWriteArrayList<>(Arrays.asList(alerts));
-                    System.out.println("已从文件加载 " + priceAlerts.size() + " 条价格提醒");
+                    System.out.println("✅ 成功从文件加载 " + priceAlerts.size() + " 条价格提醒");
+                } else {
+                    System.out.println("⚠️ 价格提醒文件存在但解析为空");
                 }
-            } catch (IOException e) {
+            } catch (Exception e) {
+                System.err.println("❌ 加载价格提醒文件时发生错误");
                 e.printStackTrace();
             }
+        } else {
+            System.out.println("ℹ️ 价格提醒文件不存在，将使用空列表");
         }
     }
 }

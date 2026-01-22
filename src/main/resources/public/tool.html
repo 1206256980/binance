@@ -204,6 +204,11 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
+        .invalid-input {
+            border-color: #dc3545 !important;
+            background-color: #fff8f8 !important;
+        }
     </style>
 </head>
 
@@ -280,6 +285,8 @@
                 </div>
 
                 <button class="alert-btn-add" onclick="addAlertRow()">➕ 添加提醒</button>
+                <p style="font-size: 0.75em; color: #dc3545; margin-top: 8px;">⚠️
+                    只有标红的必填项（币名和数值）全部填完，提醒才会保存到服务器，否则刷新后会丢失。</p>
             </div>
 
             <div class="calculator-section" style="flex: 0 0 calc(100% - 20px); min-width: 100%;">
@@ -1300,11 +1307,13 @@
 
         // ------------------- 价格提醒工具逻辑 -------------------
         let priceAlerts = [];
+        let isAlertsLoaded = false;
 
         async function loadPriceAlerts() {
             try {
                 const res = await fetch('/price-alerts');
                 priceAlerts = await res.json();
+                isAlertsLoaded = true;
                 renderPriceAlerts();
             } catch (e) {
                 console.error('加载价格提醒失败', e);
@@ -1318,13 +1327,13 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} onchange="updateAlert(${index}, 'enabled', this.checked)"></td>
-                    <td><input type="text" value="${alert.symbol || ''}" placeholder="币名" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
+                    <td><input type="text" class="${!alert.symbol ? 'invalid-input' : ''}" value="${alert.symbol || ''}" placeholder="币名" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'type', this.value)">
                             <option value="price_reached" ${alert.type === 'price_reached' ? 'selected' : ''}>价格到达</option>
                         </select>
                     </td>
-                    <td><input type="number" value="${alert.targetPrice || ''}" placeholder="阈值" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
+                    <td><input type="number" class="${!alert.targetPrice ? 'invalid-input' : ''}" value="${alert.targetPrice || ''}" placeholder="阈值" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'frequency', this.value)">
                             <option value="once" ${alert.frequency === 'once' ? 'selected' : ''}>一次</option>
@@ -1374,12 +1383,19 @@
         }
 
         async function syncPriceAlerts() {
+            if (!isAlertsLoaded) {
+                console.warn('正在加载中或加载失败，跳过同步以防数据丢失');
+                return;
+            }
             try {
-                // 🌟 清理数据：确保 targetPrice 为空时发送 null 而不是 ""
-                const cleanedAlerts = priceAlerts.map(a => ({
-                    ...a,
-                    targetPrice: (a.targetPrice === '' || a.targetPrice === null || isNaN(a.targetPrice)) ? null : parseFloat(a.targetPrice)
-                }));
+                // 🌟 数据清洗与校验：只同步填写完整的提醒
+                const cleanedAlerts = priceAlerts
+                    .filter(a => a.symbol && a.symbol.trim() !== '' && a.targetPrice !== null && a.targetPrice !== '' && !isNaN(a.targetPrice))
+                    .map(a => ({
+                        ...a,
+                        symbol: a.symbol.trim().toUpperCase(),
+                        targetPrice: parseFloat(a.targetPrice)
+                    }));
 
                 const response = await fetch('/price-alerts', {
                     method: 'POST',
