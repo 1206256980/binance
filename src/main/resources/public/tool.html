@@ -494,7 +494,12 @@
             if (group) {
                 const row = group.rows.find(r => r.id === rowId);
                 if (row) {
-                    row[field] = '';
+                    if (field === 'rise' || field === 'price') {
+                        row.rise = '';
+                        row.price = '';
+                    } else {
+                        row[field] = '';
+                    }
                     renderGroup(groupId);
                     saveDCAToStorage();
                 }
@@ -595,6 +600,56 @@
             return prevPrice ? currentRealPos * prevPrice : 0;
         }
 
+        // 处理数字的小数位数
+        function getDecimalPlaces(numStr) {
+            if (!numStr || numStr === '') return 4;
+            const str = numStr.toString();
+            const dotIndex = str.indexOf('.');
+            if (dotIndex === -1) return 0;
+            return str.length - dotIndex - 1;
+        }
+
+        // 🌟 新增：获取标记价格
+        async function fetchMarkPrice(groupId, rowId) {
+            const group = dcaGroups.find(g => g.id === groupId);
+            if (!group || !group.coinName) {
+                alert('请先输入币名 (如 BTCUSDT)');
+                return;
+            }
+
+            const btn = document.getElementById(`fetchBtn_${groupId}_${rowId}`);
+            const originalText = btn.textContent;
+            btn.textContent = '...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`/mark-price?symbol=${group.coinName.toUpperCase()}`);
+                const data = await response.json();
+                if (data && data.markPrice) {
+                    const price = parseFloat(data.markPrice);
+                    // 更新行价格
+                    const row = group.rows.find(r => r.id === rowId);
+                    if (row) {
+                        row.price = price;
+                        // 更新 UI
+                        const priceInput = document.getElementById(`price_${groupId}_${rowId}`);
+                        if (priceInput) priceInput.value = price;
+
+                        // 触发一次输入逻辑，由于可能涉及到从价格反推涨幅
+                        handleDCAInput(groupId, rowId, 'price', price);
+                    }
+                } else {
+                    alert('获取价格失败: ' + (data.error || '未知错误'));
+                }
+            } catch (err) {
+                console.error('获取价格失败:', err);
+                alert('获取价格失败，请检查网络或币名是否正确');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
         // 处理起始价输入
         function handleBasePriceInput(groupId, value) {
             const group = dcaGroups.find(g => g.id === groupId);
@@ -669,33 +724,6 @@
             saveDCAToStorage();
         }
 
-        // 🌟 新增：从 DOM 暴力同步所有输入到内存变量
-        // 防止多计算组状态由于渲染延迟导致计算不准
-        function syncGroupsFromDOM() {
-            dcaGroups.forEach(group => {
-                // 读取主表的起始价
-                const bpInput = document.getElementById(`basePrice_${group.id}`);
-                if (bpInput) group.basePrice = bpInput.value;
-
-                // 读取币种名 (如果有)
-                const cnInput = document.getElementById(`coinName_${group.id}`);
-                if (cnInput) group.coinName = cnInput.value;
-
-                // 读取每一行
-                group.rows.forEach(row => {
-                    const riseInput = document.getElementById(`rise_${group.id}_${row.id}`);
-                    const priceInput = document.getElementById(`price_${group.id}_${row.id}`);
-                    const posInput = document.getElementById(`pos_${group.id}_${row.id}`);
-
-                    if (riseInput) row.rise = riseInput.value;
-                    if (priceInput) row.price = priceInput.value;
-                    if (posInput) row.position = posInput.value;
-                });
-            });
-            // 余额
-            const balanceInput = document.getElementById('globalWalletBalance');
-            if (balanceInput) dcaGlobalWalletBalance = balanceInput.value;
-        }
 
         // 渲染所有组
         function renderAllGroups() {
@@ -822,6 +850,7 @@
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="currLoss_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;" id="recovery_${group.id}_${row.id}">-</td>
                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                        <button id="fetchBtn_${group.id}_${row.id}" onclick="fetchMarkPrice(${group.id}, ${row.id})" style="background: #007bff; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-right: 4px;" title="获取当前标记价格">取</button>
                         <button onclick="addDCARow(${group.id}, ${row.id})" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-right: 4px;" title="在下方添加一行">+</button>
                         <button onclick="removeDCARow(${group.id}, ${row.id})" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="删除此行">×</button>
                     </td>
@@ -898,8 +927,7 @@
 
         // 计算所有组的DCA
         function calculateDCA() {
-            // 1. 🌟 第一步：从 DOM 刷新所有数据
-            syncGroupsFromDOM();
+            // 获取最新的余额
 
             const MMR = 0.004; // 🌟 维持保证金率 (0.4%)
             const balanceInput = document.getElementById('globalWalletBalance');
