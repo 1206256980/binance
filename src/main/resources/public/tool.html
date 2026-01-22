@@ -176,6 +176,24 @@
             cursor: pointer;
         }
 
+        .alert-table input,
+        .alert-table select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        .alert-table input:focus,
+        .alert-table select:focus {
+            border-color: #80bdff;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
+        }
+
         .alert-btn-add {
             width: 100%;
             margin-top: 10px;
@@ -1297,15 +1315,15 @@
             priceAlerts.forEach((alert, index) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input type="text" value="${alert.symbol || ''}" placeholder="BTCUSDT" style="width: 80px;" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
+                    <td><input type="text" value="${alert.symbol || ''}" placeholder="币名" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
                     <td>
-                        <select onchange="updateAlert(${index}, 'type', this.value)" style="width: 90px;">
+                        <select onchange="updateAlert(${index}, 'type', this.value)">
                             <option value="price_reached" ${alert.type === 'price_reached' ? 'selected' : ''}>价格到达</option>
                         </select>
                     </td>
-                    <td><input type="number" value="${alert.targetPrice || ''}" placeholder="0.5" style="width: 80px;" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
+                    <td><input type="number" value="${alert.targetPrice || ''}" placeholder="阈值" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
                     <td>
-                        <select onchange="updateAlert(${index}, 'frequency', this.value)" style="width: 60px;">
+                        <select onchange="updateAlert(${index}, 'frequency', this.value)">
                             <option value="once" ${alert.frequency === 'once' ? 'selected' : ''}>一次</option>
                             <option value="continuous" ${alert.frequency === 'continuous' ? 'selected' : ''}>持续</option>
                         </select>
