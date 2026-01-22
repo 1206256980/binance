@@ -1365,14 +1365,27 @@
 
         async function syncPriceAlerts() {
             try {
-                await fetch('/price-alerts', {
+                // 🌟 清理数据：确保 targetPrice 为空时发送 null 而不是 ""
+                const cleanedAlerts = priceAlerts.map(a => ({
+                    ...a,
+                    targetPrice: (a.targetPrice === '' || a.targetPrice === null) ? null : parseFloat(a.targetPrice)
+                }));
+
+                const response = await fetch('/price-alerts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(priceAlerts)
+                    body: JSON.stringify(cleanedAlerts)
                 });
-                showSettingsSyncMessage('提醒设置已同步至服务端');
+
+                if (response.ok) {
+                    showSettingsSyncMessage('提醒设置已同步至服务端');
+                } else {
+                    const errData = await response.json();
+                    alert('同步失败: ' + (errData.message || '未知错误'));
+                }
             } catch (e) {
                 console.error('同步价格提醒失败', e);
+                alert('同步失败，请检查网络连接');
             }
         }
 

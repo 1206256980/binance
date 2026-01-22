@@ -136,6 +136,10 @@ public class BinanceCombinedServer {
         String frequency; // "once", "continuous"
         boolean isTriggered; // 对于 "once" 类型，触发后标记为已触发
 
+        public PriceAlert() {
+            this.id = UUID.randomUUID().toString();
+        }
+
         public PriceAlert(String symbol, BigDecimal targetPrice, String type, String frequency) {
             this.id = UUID.randomUUID().toString();
             this.symbol = symbol.toUpperCase();
@@ -238,17 +242,28 @@ public class BinanceCombinedServer {
         // 🌟 新增接口：保存所有提醒 (全量覆盖)
         Spark.post("/price-alerts", (req, res) -> {
             String body = req.body();
-            if (body != null) {
-                PriceAlert[] alerts = new Gson().fromJson(body, PriceAlert[].class);
-                priceAlerts.clear();
-                if (alerts != null) {
-                    priceAlerts.addAll(Arrays.asList(alerts));
+            if (body != null && !body.isEmpty()) {
+                try {
+                    PriceAlert[] alerts = new Gson().fromJson(body, PriceAlert[].class);
+                    priceAlerts.clear();
+                    if (alerts != null) {
+                        for (PriceAlert alert : alerts) {
+                            if (alert.id == null || alert.id.isEmpty()) {
+                                alert.id = UUID.randomUUID().toString();
+                            }
+                            priceAlerts.add(alert);
+                        }
+                    }
+                    savePriceAlertsToFile();
+                    return "{\"status\":\"ok\"}";
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    res.status(500);
+                    return "{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}";
                 }
-                savePriceAlertsToFile();
-                return "{\"status\":\"ok\"}";
             }
             res.status(400);
-            return "{\"status\":\"error\"}";
+            return "{\"status\":\"error\",\"message\":\"Empty body\"}";
         });
 
         // 🌟 新增接口：获取标记价格
