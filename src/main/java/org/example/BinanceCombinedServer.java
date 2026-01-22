@@ -559,29 +559,39 @@ public class BinanceCombinedServer {
         }
 
         for (PriceAlert alert : priceAlerts) {
-            if (alert.isTriggered && "once".equals(alert.frequency))
-                continue;
+            try {
+                if (alert.isTriggered && "once".equals(alert.frequency))
+                    continue;
 
-            BigDecimal currentPrice = currentPrices.get(alert.symbol);
-            BigDecimal lastPrice = lastPrices.get(alert.symbol);
+                // 🌟 防御性检查
+                if (alert.symbol == null || alert.symbol.isEmpty() || alert.targetPrice == null)
+                    continue;
 
-            if (currentPrice != null && lastPrice != null) {
-                boolean triggered = false;
-                // 判定是否穿透阈值
-                if (lastPrice.compareTo(alert.targetPrice) < 0 && currentPrice.compareTo(alert.targetPrice) >= 0)
-                    triggered = true;
-                else if (lastPrice.compareTo(alert.targetPrice) > 0 && currentPrice.compareTo(alert.targetPrice) <= 0)
-                    triggered = true;
+                BigDecimal currentPrice = currentPrices.get(alert.symbol);
+                BigDecimal lastPrice = lastPrices.get(alert.symbol);
 
-                if (triggered) {
-                    System.out.println(
-                            "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: " + alert.targetPrice);
-                    sendWxPusherNotification(alert, currentPrice);
-                    if ("once".equals(alert.frequency)) {
-                        alert.isTriggered = true;
+                if (currentPrice != null && lastPrice != null) {
+                    boolean triggered = false;
+                    // 判定是否穿透阈值
+                    if (lastPrice.compareTo(alert.targetPrice) < 0 && currentPrice.compareTo(alert.targetPrice) >= 0)
+                        triggered = true;
+                    else if (lastPrice.compareTo(alert.targetPrice) > 0
+                            && currentPrice.compareTo(alert.targetPrice) <= 0)
+                        triggered = true;
+
+                    if (triggered) {
+                        System.out.println(
+                                "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: " + alert.targetPrice);
+                        sendWxPusherNotification(alert, currentPrice);
+                        if ("once".equals(alert.frequency)) {
+                            alert.isTriggered = true;
+                        }
+                        savePriceAlertsToFile();
                     }
-                    savePriceAlertsToFile();
                 }
+            } catch (Exception e) {
+                System.err.println("❌ 处理提醒时出错: " + alert.symbol);
+                e.printStackTrace();
             }
         }
 
