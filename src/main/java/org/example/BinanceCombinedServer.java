@@ -135,6 +135,9 @@ public class BinanceCombinedServer {
         String type; // "price_reached"
         String frequency; // "once", "continuous"
         boolean isTriggered; // 对于 "once" 类型，触发后标记为已触发
+        boolean enabled = true; // 🌟 启动开关
+        long lastTriggerTime = 0; // 🌟 上次触发时间
+        int cooldownSeconds = 60; // 🌟 冷却时间（秒）
 
         public PriceAlert() {
             this.id = UUID.randomUUID().toString();
@@ -560,12 +563,19 @@ public class BinanceCombinedServer {
 
         for (PriceAlert alert : priceAlerts) {
             try {
-                if (alert.isTriggered && "once".equals(alert.frequency))
+                // 🌟 核心判断 1：检查开关是否开启
+                if (!alert.enabled)
                     continue;
 
                 // 🌟 防御性检查
                 if (alert.symbol == null || alert.symbol.isEmpty() || alert.targetPrice == null)
                     continue;
+
+                // 🌟 核心判断 2：冷却时间检查
+                long now = System.currentTimeMillis();
+                if (now - alert.lastTriggerTime < (long) alert.cooldownSeconds * 1000) {
+                    continue;
+                }
 
                 BigDecimal currentPrice = currentPrices.get(alert.symbol);
                 BigDecimal lastPrice = lastPrices.get(alert.symbol);
@@ -583,8 +593,12 @@ public class BinanceCombinedServer {
                         System.out.println(
                                 "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: " + alert.targetPrice);
                         sendWxPusherNotification(alert, currentPrice);
+
+                        // 🌟 更新触发状态
+                        alert.lastTriggerTime = now;
                         if ("once".equals(alert.frequency)) {
                             alert.isTriggered = true;
+                            alert.enabled = false; // 一次触发后自动关闭开关
                         }
                         savePriceAlertsToFile();
                     }

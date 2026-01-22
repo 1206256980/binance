@@ -264,10 +264,12 @@
                     <table class="alert-table">
                         <thead>
                             <tr>
+                                <th>状态</th>
                                 <th>币名</th>
                                 <th>提醒类型</th>
                                 <th>提醒数值</th>
                                 <th>频率</th>
+                                <th>冷却(秒)</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -1315,6 +1317,7 @@
             priceAlerts.forEach((alert, index) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
+                    <td><input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} onchange="updateAlert(${index}, 'enabled', this.checked)"></td>
                     <td><input type="text" value="${alert.symbol || ''}" placeholder="币名" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'type', this.value)">
@@ -1328,6 +1331,7 @@
                             <option value="continuous" ${alert.frequency === 'continuous' ? 'selected' : ''}>持续</option>
                         </select>
                     </td>
+                    <td><input type="number" value="${alert.cooldownSeconds || 60}" min="0" style="width: 50px;" onchange="updateAlert(${index}, 'cooldownSeconds', this.value)"></td>
                     <td><button class="alert-btn-del" onclick="removeAlert(${index})">删</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -1335,11 +1339,14 @@
         }
 
         async function updateAlert(index, field, value) {
-            if (field === 'targetPrice') value = parseFloat(value);
+            if (field === 'targetPrice') value = (value === '' ? null : parseFloat(value));
             if (field === 'symbol') value = value.toUpperCase();
+            if (field === 'cooldownSeconds') value = parseInt(value) || 0;
+
             priceAlerts[index][field] = value;
-            // 如果修改了目标价或币名，重置触发状态
-            if (field === 'targetPrice' || field === 'symbol') {
+
+            // 如果修改了目标价、币名或频率，可以考虑重置触发状态
+            if (field === 'targetPrice' || field === 'symbol' || field === 'enabled') {
                 priceAlerts[index].isTriggered = false;
             }
             await syncPriceAlerts();
@@ -1351,7 +1358,10 @@
                 targetPrice: '',
                 type: 'price_reached',
                 frequency: 'once',
-                isTriggered: false
+                isTriggered: false,
+                enabled: true,
+                cooldownSeconds: 60,
+                lastTriggerTime: 0
             });
             renderPriceAlerts();
             await syncPriceAlerts();
@@ -1368,7 +1378,7 @@
                 // 🌟 清理数据：确保 targetPrice 为空时发送 null 而不是 ""
                 const cleanedAlerts = priceAlerts.map(a => ({
                     ...a,
-                    targetPrice: (a.targetPrice === '' || a.targetPrice === null) ? null : parseFloat(a.targetPrice)
+                    targetPrice: (a.targetPrice === '' || a.targetPrice === null || isNaN(a.targetPrice)) ? null : parseFloat(a.targetPrice)
                 }));
 
                 const response = await fetch('/price-alerts', {
