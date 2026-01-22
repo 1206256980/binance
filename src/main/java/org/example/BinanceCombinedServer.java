@@ -576,7 +576,8 @@ public class BinanceCombinedServer {
 
     // 🌟 新增：发送 WxPusher 通知
     private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentPrice) {
-        String content = "<h1>🚨 价格提醒触发</h1>" +
+        String typeDisplay = "price_reached".equals(alert.type) ? "价格到达" : alert.type;
+        String content = "<h1>🚨 " + typeDisplay + "提醒触发</h1>" +
                 "<p><b>交易对:</b> " + alert.symbol + "</p>" +
                 "<p><b>目标价格:</b> <span style='color:blue'>" + alert.targetPrice + "</span></p>" +
                 "<p><b>当前价格:</b> <span style='color:red'>" + currentPrice + "</span></p>" +

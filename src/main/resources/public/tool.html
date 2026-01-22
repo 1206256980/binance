@@ -51,10 +51,10 @@
             margin-right: 10px;
             margin-bottom: 20px;
 
-            /* 关键修改 2: 确保计算后的宽度能稳定占据 1/3，并阻止被压缩 */
-            flex: 0 0 calc(33.333333% - 20px);
-            /* 减去 左右 10px margin，共 20px */
-            min-width: 280px;
+            /* 关键修改 2: 响应式比例控制 */
+            flex: 0 0 calc(22% - 20px);
+            min-width: 220px;
+            transition: all 0.3s ease;
             /* 设置一个合理的最小宽度 */
 
             padding: 15px;
@@ -63,6 +63,11 @@
             background-color: #ffffff;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             box-sizing: border-box;
+        }
+
+        .calculator-section.wide {
+            flex: 0 0 calc(56% - 20px);
+            min-width: 450px;
         }
 
         .placeholder {
@@ -192,7 +197,7 @@
 
         <div class="tools-grid">
 
-            <div class="calculator-section">
+            <div class="calculator-section narrow">
                 <h2>1. 📈 价格百分比变化</h2>
                 <p style="font-size: 0.8em; color: #6c757d;">公式：$((结束价 - 起始价) / 起始价) \times 100\%$</p>
 
@@ -212,7 +217,7 @@
                 </div>
             </div>
 
-            <div class="calculator-section">
+            <div class="calculator-section narrow">
                 <h2>2. 💰 价格百分比调整</h2>
                 <p style="font-size: 0.8em; color: #6c757d;">公式：$价格 \times (1 + 百分比)$</p>
                 <p style="font-size: 0.7em; color: #6c757d;">(百分比请按整数输入，如 5 或 -2)</p>
@@ -233,7 +238,7 @@
                 </div>
             </div>
 
-            <div class="calculator-section">
+            <div class="calculator-section wide">
                 <h2>3. 🔔 价格提醒工具</h2>
                 <p style="font-size: 0.8em; color: #6c757d;">价格穿透阈值即送微信提醒 (1s级监控)</p>
 
@@ -242,6 +247,7 @@
                         <thead>
                             <tr>
                                 <th>币名</th>
+                                <th>提醒类型</th>
                                 <th>提醒数值</th>
                                 <th>频率</th>
                                 <th>操作</th>
@@ -257,7 +263,7 @@
             </div>
 
             <div class="calculator-section" style="flex: 0 0 calc(100% - 20px); min-width: 100%;">
-                <h2>3. 📊 马丁补仓计算器</h2>
+                <h2>4. 📊 马丁补仓计算器</h2>
                 <p style="font-size: 0.8em; color: #6c757d;">支持多组计算，每组有独立的起始价和补仓列表</p>
 
                 <!-- 全局保证金设置 -->
@@ -1291,8 +1297,13 @@
             priceAlerts.forEach((alert, index) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input type="text" value="${alert.symbol}" style="width: 70px;" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
-                    <td><input type="number" value="${alert.targetPrice}" style="width: 70px;" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
+                    <td><input type="text" value="${alert.symbol || ''}" placeholder="BTCUSDT" style="width: 80px;" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
+                    <td>
+                        <select onchange="updateAlert(${index}, 'type', this.value)" style="width: 90px;">
+                            <option value="price_reached" ${alert.type === 'price_reached' ? 'selected' : ''}>价格到达</option>
+                        </select>
+                    </td>
+                    <td><input type="number" value="${alert.targetPrice || ''}" placeholder="0.5" style="width: 80px;" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'frequency', this.value)" style="width: 60px;">
                             <option value="once" ${alert.frequency === 'once' ? 'selected' : ''}>一次</option>
@@ -1318,8 +1329,8 @@
 
         async function addAlertRow() {
             priceAlerts.push({
-                symbol: 'BTCUSDT',
-                targetPrice: 0,
+                symbol: '',
+                targetPrice: '',
                 type: 'price_reached',
                 frequency: 'once',
                 isTriggered: false
