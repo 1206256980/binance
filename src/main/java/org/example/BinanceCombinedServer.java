@@ -20,6 +20,10 @@ public class BinanceCombinedServer {
     // ------------------- 公共配置 -------------------
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
+    private static final String TICKER_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price";
+    private static final String WX_PUSHER_URL = "https://wxpusher.zjiecode.com/api/send/message/simple-push";
+    private static final String WX_PUSHER_SPT = "SPT_czS4n18uCRSQTUJtPSr1ZiRa3737";
+
     // 🌟 币安 API Key（用于获取 MMR 数据）
     private static final String BINANCE_API_KEY = "piFGDiG2hwjXzKiC0OfoP6CMhHSGcyWVDBhJlFNR7EZuS0ooZodwOScTQrx9uOXk";
     private static final String BINANCE_SECRET_KEY = "UpUsxSklT2PCfxYgoDmMrQMMUoTTY4k73pEYNs9Gxg9vGpSdaFjrnhw13eHjUl4B";
@@ -50,6 +54,11 @@ public class BinanceCombinedServer {
     // 🌟 新增配置：DCA 配置文件路径
     private static final String DCA_FILE_PATH = "dca_settings_history.json";
     private static volatile String dcaSettingsCache = "{\"groups\":[],\"groupIdCounter\":0,\"globalRowIdCounter\":0,\"globalWalletBalance\":\"\"}";
+
+    // 🌟 新增配置：价格提醒配置文件路径
+    private static final String PRICE_ALERT_FILE_PATH = "price_alerts.json";
+    private static List<PriceAlert> priceAlerts = new CopyOnWriteArrayList<>();
+    private static Map<String, BigDecimal> lastPrices = new ConcurrentHashMap<>();
 
     // ------------------- 数据模型 -------------------
     static class CandleRaw {
@@ -118,6 +127,25 @@ public class BinanceCombinedServer {
         }
     }
 
+    // 🌟 新增数据模型：价格提醒
+    static class PriceAlert {
+        String id;
+        String symbol;
+        BigDecimal targetPrice;
+        String type; // "price_reached"
+        String frequency; // "once", "continuous"
+        boolean isTriggered; // 对于 "once" 类型，触发后标记为已触发
+
+        public PriceAlert(String symbol, BigDecimal targetPrice, String type, String frequency) {
+            this.id = UUID.randomUUID().toString();
+            this.symbol = symbol.toUpperCase();
+            this.targetPrice = targetPrice;
+            this.type = type;
+            this.frequency = frequency;
+            this.isTriggered = false;
+        }
+    }
+
     private static volatile List<String> cachedSymbols = new ArrayList<>();
     private static volatile long cachedSymbolsTime = 0;
     private static final long SYMBOLS_CACHE_DURATION = 60 * 60 * 1000; // 10分钟
@@ -130,6 +158,18 @@ public class BinanceCombinedServer {
         loadDcaSettingsFromFile();
         Spark.port(4567);
         Spark.staticFiles.location("/public");
+
+        loadPriceAlertsFromFile();
+
+        // 🌟 新增高频调度器：每 1 秒检查一次价格提醒
+        ScheduledExecutorService alertScheduler = Executors.newScheduledThreadPool(1);
+        alertScheduler.scheduleAtFixedRate(() -> {
+            try {
+                checkPriceAlerts();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 1, 1, TimeUnit.SECONDS);
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
@@ -189,6 +229,27 @@ public class BinanceCombinedServer {
             }
         });
 
+        // 🌟 新增接口：获取所有提醒
+        Spark.get("/price-alerts", (req, res) -> {
+            res.type("application/json; charset=UTF-8");
+            return new Gson().toJson(priceAlerts);
+        });
+
+        // 🌟 新增接口：保存所有提醒 (全量覆盖)
+        Spark.post("/price-alerts", (req, res) -> {
+            String body = req.body();
+            if (body != null) {
+                PriceAlert[] alerts = new Gson().fromJson(body, PriceAlert[].class);
+                priceAlerts.clear();
+                if (alerts != null) {
+                    priceAlerts.addAll(Arrays.asList(alerts));
+                }
+                savePriceAlertsToFile();
+                return "{\"status\":\"ok\"}";
+            }
+            res.status(400);
+            return "{\"status\":\"error\"}";
+        });
     }
 
     // ------------------- 刷新逻辑 -------------------
@@ -445,6 +506,102 @@ public class BinanceCombinedServer {
         return new Candle(symbol, open, high, low, close);
     }
 
+    // 🌟 新增：高频价格检查逻辑
+    private static void checkPriceAlerts() {
+        if (priceAlerts.isEmpty())
+            return;
+
+        String json = httpGet(TICKER_PRICE_URL);
+        if (json == null || json.isEmpty())
+            return;
+
+        JsonArray arr = new Gson().fromJson(json, JsonArray.class);
+        Map<String, BigDecimal> currentPrices = new HashMap<>();
+        for (JsonElement el : arr) {
+            JsonObject obj = el.getAsJsonObject();
+            currentPrices.put(obj.get("symbol").getAsString(), obj.get("price").getAsBigDecimal());
+        }
+
+        for (PriceAlert alert : priceAlerts) {
+            if (alert.isTriggered && "once".equals(alert.frequency))
+                continue;
+
+            BigDecimal currentPrice = currentPrices.get(alert.symbol);
+            BigDecimal lastPrice = lastPrices.get(alert.symbol);
+
+            if (currentPrice != null && lastPrice != null) {
+                boolean triggered = false;
+                // 判定是否穿透阈值
+                if (lastPrice.compareTo(alert.targetPrice) < 0 && currentPrice.compareTo(alert.targetPrice) >= 0)
+                    triggered = true;
+                else if (lastPrice.compareTo(alert.targetPrice) > 0 && currentPrice.compareTo(alert.targetPrice) <= 0)
+                    triggered = true;
+
+                if (triggered) {
+                    System.out.println(
+                            "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: " + alert.targetPrice);
+                    sendWxPusherNotification(alert, currentPrice);
+                    if ("once".equals(alert.frequency)) {
+                        alert.isTriggered = true;
+                    }
+                    savePriceAlertsToFile();
+                }
+            }
+        }
+
+        // 更新最后监控价格
+        lastPrices.putAll(currentPrices);
+    }
+
+    // 🌟 新增：发送 WxPusher 通知
+    private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentPrice) {
+        String content = "<h1>🚨 价格提醒触发</h1>" +
+                "<p><b>交易对:</b> " + alert.symbol + "</p>" +
+                "<p><b>目标价格:</b> <span style='color:blue'>" + alert.targetPrice + "</span></p>" +
+                "<p><b>当前价格:</b> <span style='color:red'>" + currentPrice + "</span></p>" +
+                "<p><b>时间:</b> " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p>";
+
+        JsonObject body = new JsonObject();
+        body.addProperty("content", content);
+        body.addProperty("summary", "价格提醒: " + alert.symbol + " 达到 " + alert.targetPrice);
+        body.addProperty("contentType", 2); // HTML
+        body.addProperty("spt", WX_PUSHER_SPT);
+
+        httpPost(WX_PUSHER_URL, body.toString());
+    }
+
+    // 🌟 新增：通用的 HTTP POST 方法
+    private static String httpPost(String urlStr, String jsonBody) {
+        try {
+            URL url = new URL(urlStr);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = jsonBody.getBytes("utf-8");
+                os.write(input, 0, input.length);
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 200 && responseCode < 300) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null)
+                        sb.append(line);
+                    return sb.toString();
+                }
+            } else {
+                System.out.println("HTTP POST 错误: " + responseCode);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     private static String httpGet(String urlStr) {
         try {
             URL url = new URL(urlStr);
@@ -614,6 +771,32 @@ public class BinanceCombinedServer {
                 }
                 dcaSettingsCache = sb.toString();
                 System.out.println("已从文件加载 DCA 配置");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // 🌟 新增：价格提醒文件持久化
+    private static void savePriceAlertsToFile() {
+        try (PrintWriter out = new PrintWriter(new FileWriter(PRICE_ALERT_FILE_PATH))) {
+            out.print(new GsonBuilder().setPrettyPrinting().create().toJson(priceAlerts));
+            System.out.println("价格提醒配置已保存至文件");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void loadPriceAlertsFromFile() {
+        File file = new File(PRICE_ALERT_FILE_PATH);
+        if (file.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                Gson gson = new Gson();
+                PriceAlert[] alerts = gson.fromJson(reader, PriceAlert[].class);
+                if (alerts != null) {
+                    priceAlerts = new CopyOnWriteArrayList<>(Arrays.asList(alerts));
+                    System.out.println("已从文件加载 " + priceAlerts.size() + " 条价格提醒");
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }

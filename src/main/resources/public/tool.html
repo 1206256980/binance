@@ -142,6 +142,45 @@
         .visible {
             opacity: 1 !important;
         }
+
+        /* 价格提醒工具特有样式 */
+        .alert-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.85em;
+        }
+
+        .alert-table th,
+        .alert-table td {
+            padding: 6px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        .alert-table th {
+            background-color: #f8f9fa;
+        }
+
+        .alert-btn-del {
+            color: white;
+            background-color: #dc3545;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .alert-btn-add {
+            width: 100%;
+            margin-top: 10px;
+            padding: 8px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -192,6 +231,29 @@
                     结果：<span id="adjustedPriceResult"></span>
                     <span class="copy-hint">(点击复制)</span>
                 </div>
+            </div>
+
+            <div class="calculator-section">
+                <h2>3. 🔔 价格提醒工具</h2>
+                <p style="font-size: 0.8em; color: #6c757d;">价格穿透阈值即送微信提醒 (1s级监控)</p>
+
+                <div style="max-height: 250px; overflow-y: auto;">
+                    <table class="alert-table">
+                        <thead>
+                            <tr>
+                                <th>币名</th>
+                                <th>提醒数值</th>
+                                <th>频率</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertList">
+                            <!-- 提醒项目 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <button class="alert-btn-add" onclick="addAlertRow()">➕ 添加提醒</button>
             </div>
 
             <div class="calculator-section" style="flex: 0 0 calc(100% - 20px); min-width: 100%;">
@@ -1181,6 +1243,95 @@
 
         // 🌟 初始化 MMR 缓存
         initMMRCache();
+
+        // ------------------- 价格提醒工具逻辑 -------------------
+        let priceAlerts = [];
+
+        async function loadPriceAlerts() {
+            try {
+                const res = await fetch('/price-alerts');
+                priceAlerts = await res.json();
+                renderPriceAlerts();
+            } catch (e) {
+                console.error('加载价格提醒失败', e);
+            }
+        }
+
+        function renderPriceAlerts() {
+            const tbody = document.getElementById('alertList');
+            tbody.innerHTML = '';
+            priceAlerts.forEach((alert, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><input type="text" value="${alert.symbol}" style="width: 70px;" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
+                    <td><input type="number" value="${alert.targetPrice}" style="width: 70px;" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
+                    <td>
+                        <select onchange="updateAlert(${index}, 'frequency', this.value)" style="width: 60px;">
+                            <option value="once" ${alert.frequency === 'once' ? 'selected' : ''}>一次</option>
+                            <option value="continuous" ${alert.frequency === 'continuous' ? 'selected' : ''}>持续</option>
+                        </select>
+                    </td>
+                    <td><button class="alert-btn-del" onclick="removeAlert(${index})">删</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function updateAlert(index, field, value) {
+            if (field === 'targetPrice') value = parseFloat(value);
+            if (field === 'symbol') value = value.toUpperCase();
+            priceAlerts[index][field] = value;
+            // 如果修改了目标价或币名，重置触发状态
+            if (field === 'targetPrice' || field === 'symbol') {
+                priceAlerts[index].isTriggered = false;
+            }
+            await syncPriceAlerts();
+        }
+
+        async function addAlertRow() {
+            priceAlerts.push({
+                symbol: 'BTCUSDT',
+                targetPrice: 0,
+                type: 'price_reached',
+                frequency: 'once',
+                isTriggered: false
+            });
+            renderPriceAlerts();
+            await syncPriceAlerts();
+        }
+
+        async function removeAlert(index) {
+            priceAlerts.splice(index, 1);
+            renderPriceAlerts();
+            await syncPriceAlerts();
+        }
+
+        async function syncPriceAlerts() {
+            try {
+                await fetch('/price-alerts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(priceAlerts)
+                });
+                showSettingsSyncMessage('提醒设置已同步至服务端');
+            } catch (e) {
+                console.error('同步价格提醒失败', e);
+            }
+        }
+
+        function showSettingsSyncMessage(msg) {
+            const message = document.getElementById('copyMessage');
+            const originalText = message.textContent;
+            message.textContent = '✅ ' + msg;
+            message.classList.add('visible');
+            setTimeout(() => {
+                message.classList.remove('visible');
+                setTimeout(() => { message.textContent = originalText; }, 500);
+            }, 2000);
+        }
+
+        // 初始化加载
+        loadPriceAlerts();
 
     </script>
 
