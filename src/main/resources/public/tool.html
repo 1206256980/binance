@@ -706,17 +706,10 @@
                 const data = await response.json();
                 if (data && data.markPrice) {
                     const price = parseFloat(data.markPrice);
-                    // 更新行价格
-                    const row = group.rows.find(r => r.id === rowId);
-                    if (row) {
-                        row.price = price;
-                        // 更新 UI
-                        const priceInput = document.getElementById(`price_${groupId}_${rowId}`);
-                        if (priceInput) priceInput.value = price;
-
-                        // 触发一次输入逻辑，由于可能涉及到从价格反推涨幅
-                        handleDCAInput(groupId, rowId, 'price', price);
-                    }
+                    // 🌟 关键：直接调用 handleDCAInput，它会自动清空 row.rise 并更新 UI
+                    handleDCAInput(groupId, rowId, 'price', price);
+                    // 🌟 重新渲染整个组，确保 UI 和数据完全同步
+                    renderGroup(groupId);
                 } else {
                     alert('获取价格失败: ' + (data.error || '未知错误'));
                 }
@@ -774,25 +767,28 @@
             const row = group.rows.find(r => r.id === rowId);
             if (!row) return;
 
-            row[field] = value;
+            // 🌟 统一转为字符串存储，避免类型比较问题
+            const strValue = (value === null || value === undefined) ? '' : String(value);
+            row[field] = strValue;
+
             const basePrice = parseFloat(group.basePrice);
             const priceDecimals = getDecimalPlaces(group.basePrice);
 
-            // 互斥逻辑
-            if (field === 'rise' && value !== '') {
+            // 互斥逻辑：输入涨幅则清空价格，输入价格则清空涨幅
+            if (field === 'rise' && strValue !== '') {
                 row.price = '';
                 const priceInput = document.getElementById(`price_${groupId}_${rowId}`);
                 if (priceInput && !isNaN(basePrice) && basePrice > 0) {
-                    const rise = parseFloat(value);
+                    const rise = parseFloat(strValue);
                     if (!isNaN(rise)) {
                         priceInput.value = (basePrice * (1 + rise / 100)).toFixed(priceDecimals);
                     }
                 }
-            } else if (field === 'price' && value !== '') {
+            } else if (field === 'price' && strValue !== '') {
                 row.rise = '';
                 const riseInput = document.getElementById(`rise_${groupId}_${rowId}`);
                 if (riseInput && !isNaN(basePrice) && basePrice > 0) {
-                    const price = parseFloat(value);
+                    const price = parseFloat(strValue);
                     if (!isNaN(price)) {
                         riseInput.value = (((price - basePrice) / basePrice) * 100).toFixed(2);
                     }
