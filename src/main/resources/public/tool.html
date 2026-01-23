@@ -873,12 +873,14 @@
                 let displayPrice = row.price;
 
                 if (!isNaN(basePrice) && basePrice > 0) {
-                    if (row.rise !== '' && row.price === '') {
+                    // 🌟 优先级修复：如果涨幅有值，优先用涨幅计算价格
+                    if (row.rise !== '') {
                         const rise = parseFloat(row.rise);
                         if (!isNaN(rise)) {
                             displayPrice = (basePrice * (1 + rise / 100)).toFixed(priceDecimals);
                         }
-                    } else if (row.price !== '' && row.rise === '') {
+                    } else if (row.price !== '') {
+                        // 只有当涨幅为空时，才用价格反算涨幅
                         const price = parseFloat(row.price);
                         if (!isNaN(price)) {
                             displayRise = (((price - basePrice) / basePrice) * 100).toFixed(2);
