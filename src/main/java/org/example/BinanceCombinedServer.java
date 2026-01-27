@@ -177,7 +177,7 @@ public class BinanceCombinedServer {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }, 1, 1, TimeUnit.SECONDS);
+        }, 3, 3, TimeUnit.SECONDS);
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
