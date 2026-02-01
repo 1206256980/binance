@@ -570,7 +570,9 @@ public class BinanceCombinedServer {
 
     // 🌟 新增：高频价格检查逻辑
     private static void checkPriceAlerts() {
-        if (priceAlerts.isEmpty())
+        // 🌟 只有当存在启用的提醒时才调用币安API
+        boolean hasEnabledAlert = priceAlerts.stream().anyMatch(a -> a.enabled);
+        if (!hasEnabledAlert)
             return;
 
         String json = httpGet(TICKER_PRICE_URL);
