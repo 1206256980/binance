@@ -47,6 +47,11 @@ public class BinanceCombinedServer {
     private static final long INDEX_CALCULATION_INTERVAL_MS = 3 * 60 * 1000; // 3 分钟的毫秒数 (180,000 ms)
     private static volatile long lastIndexCalculationTime = 0; // 记录上次指数计算的时间点
 
+    // ------------------- 按需刷新控制 -------------------
+    private static volatile long lastRefreshTime = 0; // 记录上次数据刷新时间
+    private static final long REFRESH_INTERVAL_MS = DEFAULT_REFRESH_SECONDS * 1000; // 刷新间隔(毫秒)
+    private static volatile boolean isRefreshing = false; // 防止并发刷新
+
     // 🌟 新增配置：DCA 配置文件路径
     private static final String DCA_FILE_PATH = "dca_settings_history.json";
     private static volatile String dcaSettingsCache = "{\"groups\":[],\"groupIdCounter\":0,\"globalRowIdCounter\":0,\"globalWalletBalance\":\"\"}";
@@ -131,22 +136,20 @@ public class BinanceCombinedServer {
         Spark.port(4567);
         Spark.staticFiles.location("/public");
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                refreshAllData();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }, 0, DEFAULT_REFRESH_SECONDS, TimeUnit.SECONDS);
+        // 🌟 移除定时任务，改为按需刷新
+        // 用户访问时才调用币安API，节省资源
 
         Spark.get("/data", (req, res) -> {
             res.type("application/json; charset=UTF-8");
+            // 🌟 按需刷新：检查缓存是否过期
+            refreshIfNeeded();
             return new GsonBuilder().setPrettyPrinting().create().toJson(rankCache);
         });
 
         Spark.get("/strong", (req, res) -> {
             res.type("application/json; charset=UTF-8");
+            // 🌟 按需刷新：检查缓存是否过期
+            refreshIfNeeded();
             return new GsonBuilder().setPrettyPrinting().create()
                     .toJson(strongCache.stream().map(StrongCoin::new).collect(Collectors.toList()));
         });
@@ -212,6 +215,25 @@ public class BinanceCombinedServer {
     }
 
     // ------------------- 刷新逻辑 -------------------
+
+    // 🌟 按需刷新：只有当缓存过期时才刷新数据
+    private static synchronized void refreshIfNeeded() {
+        long now = System.currentTimeMillis();
+        // 如果距离上次刷新不足间隔时间，或者正在刷新中，直接返回
+        if ((now - lastRefreshTime) < REFRESH_INTERVAL_MS || isRefreshing) {
+            return;
+        }
+        isRefreshing = true;
+        try {
+            refreshAllData();
+            lastRefreshTime = System.currentTimeMillis();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            isRefreshing = false;
+        }
+    }
+
     private static void refreshAllData() throws Exception {
         long start = System.currentTimeMillis();
         List<String> symbols = getAllSymbolsCached();
