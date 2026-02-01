@@ -899,7 +899,6 @@ public class BinanceCombinedServer {
             params += "&signature=" + signature;
 
             String fullUrl = baseUrl + "?" + params;
-            System.out.println("请求 Binance API: " + fullUrl);
 
             URL url = new URL(fullUrl);
             HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
