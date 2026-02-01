@@ -605,6 +605,20 @@ public class BinanceCombinedServer {
             }
         }
 
+        // 🌟 新增：提取并计算所有当前的 PnL 情况，防止在循环中更新状态导致后续提醒失效
+        Map<String, BigDecimal> currentPnLMap = new HashMap<>();
+        if (positions != null) {
+            BigDecimal totalAccPnL = BigDecimal.ZERO;
+            for (JsonElement p : positions) {
+                JsonObject obj = p.getAsJsonObject();
+                BigDecimal pnl = obj.get("unRealizedProfit").getAsBigDecimal();
+                String sym = obj.get("symbol").getAsString();
+                currentPnLMap.put(sym, currentPnLMap.getOrDefault(sym, BigDecimal.ZERO).add(pnl));
+                totalAccPnL = totalAccPnL.add(pnl);
+            }
+            currentPnLMap.put("ACCOUNT", totalAccPnL);
+        }
+
         long now = System.currentTimeMillis();
         for (PriceAlert alert : enabledAlerts) {
             try {
@@ -643,33 +657,15 @@ public class BinanceCombinedServer {
                                 savePriceAlertsToFile();
                             }
                         }
-                        // 即使没有触发也存入状态，用于下一次穿越判断
-                        lastPrices.put(alert.symbol, currentPrice);
                     }
                 } else if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)) {
                     // 🌟 盈亏提醒逻辑
                     if (positions == null || alert.targetPrice == null)
                         continue;
 
-                    BigDecimal currentPnL = BigDecimal.ZERO;
-                    String pnlKey = "ACCOUNT"; // 默认为全账户盈亏的 Key
-                    if (alert.symbol == null || alert.symbol.trim().isEmpty()) {
-                        // 全账户总盈亏
-                        for (JsonElement p : positions) {
-                            currentPnL = currentPnL.add(p.getAsJsonObject().get("unRealizedProfit").getAsBigDecimal());
-                        }
-                    } else {
-                        // 特定币种盈亏
-                        String targetSym = alert.symbol.trim().toUpperCase();
-                        pnlKey = targetSym; // 使用币名作为 Key
-                        for (JsonElement p : positions) {
-                            if (targetSym.equals(p.getAsJsonObject().get("symbol").getAsString())) {
-                                currentPnL = currentPnL
-                                        .add(p.getAsJsonObject().get("unRealizedProfit").getAsBigDecimal());
-                            }
-                        }
-                    }
-
+                    String pnlKey = (alert.symbol == null || alert.symbol.trim().isEmpty()) ? "ACCOUNT"
+                            : alert.symbol.trim().toUpperCase();
+                    BigDecimal currentPnL = currentPnLMap.getOrDefault(pnlKey, BigDecimal.ZERO);
                     BigDecimal lastPnL = lastPnls.get(pnlKey);
                     BigDecimal targetThreshold = "profit_reached".equals(alert.type) ? alert.targetPrice
                             : alert.targetPrice.negate();
@@ -695,8 +691,7 @@ public class BinanceCombinedServer {
                             savePriceAlertsToFile();
                         }
                     } else {
-                        // 🌟 特殊处理：如果是第一次获取到数据（lastPnL 为空），且当前已经超过了阈值，也可以触发
-                        // 这样防止用户设置了一个已经达到的提醒却因为没“穿越”而不提醒
+                        // 初始状态处理
                         boolean triggered = false;
                         if ("profit_reached".equals(alert.type)) {
                             if (currentPnL.compareTo(targetThreshold) >= 0)
@@ -717,8 +712,6 @@ public class BinanceCombinedServer {
                             savePriceAlertsToFile();
                         }
                     }
-                    // 更新该 Key 的最后盈亏值
-                    lastPnls.put(pnlKey, currentPnL);
                 }
             } catch (Exception e) {
                 System.err.println("❌ 处理提醒时出错: " + alert.symbol);
@@ -726,8 +719,9 @@ public class BinanceCombinedServer {
             }
         }
 
-        // 更新最后监控价格
+        // 🌟 循环结束后更新所有状态，确保每个提醒在当前循环中都能看到相同的“上一次状态”
         lastPrices.putAll(currentTickerPrices);
+        lastPnls.putAll(currentPnLMap);
     }
 
     // 🌟 新增：发送 WxPusher 通知
