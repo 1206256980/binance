@@ -66,6 +66,7 @@ public class BinanceCombinedServer {
     private static final String PRICE_ALERT_FILE_PATH = "price_alerts.json";
     private static List<PriceAlert> priceAlerts = new CopyOnWriteArrayList<>();
     private static Map<String, BigDecimal> lastPrices = new ConcurrentHashMap<>();
+    private static Map<String, BigDecimal> lastPnls = new ConcurrentHashMap<>();
 
     // ------------------- 数据模型 -------------------
     static class CandleRaw {
@@ -645,6 +646,7 @@ public class BinanceCombinedServer {
                         continue;
 
                     BigDecimal currentPnL = BigDecimal.ZERO;
+                    String pnlKey = "ACCOUNT"; // 默认为全账户盈亏的 Key
                     if (alert.symbol == null || alert.symbol.trim().isEmpty()) {
                         // 全账户总盈亏
                         for (JsonElement p : positions) {
@@ -653,6 +655,7 @@ public class BinanceCombinedServer {
                     } else {
                         // 特定币种盈亏
                         String targetSym = alert.symbol.trim().toUpperCase();
+                        pnlKey = targetSym; // 使用币名作为 Key
                         for (JsonElement p : positions) {
                             if (targetSym.equals(p.getAsJsonObject().get("symbol").getAsString())) {
                                 currentPnL = currentPnL
@@ -661,28 +664,33 @@ public class BinanceCombinedServer {
                         }
                     }
 
-                    boolean triggered = false;
-                    if ("profit_reached".equals(alert.type)) {
-                        if (currentPnL.compareTo(alert.targetPrice) >= 0)
-                            triggered = true;
-                    } else { // loss_reached
-                        // 亏损提醒，目标价应为正数(表示亏损金额)，所以判断 currentPnL <= -targetPrice
-                        if (currentPnL.compareTo(alert.targetPrice.negate()) <= 0)
-                            triggered = true;
-                    }
+                    BigDecimal lastPnL = lastPnls.get(pnlKey);
+                    BigDecimal targetThreshold = "profit_reached".equals(alert.type) ? alert.targetPrice
+                            : alert.targetPrice.negate();
 
-                    if (triggered) {
-                        String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
-                        System.out
-                                .println("🚨 触发盈亏提醒: " + scope + " 当前盈亏: " + currentPnL + " 目标: " + alert.targetPrice);
-                        sendWxPusherNotification(alert, currentPnL);
-                        alert.lastTriggerTime = now;
-                        if ("once".equals(alert.frequency)) {
-                            alert.isTriggered = true;
-                            alert.enabled = false;
+                    if (lastPnL != null) {
+                        boolean triggered = false;
+                        // 穿越逻辑：从下方穿过或从上方穿过阈值
+                        if (lastPnL.compareTo(targetThreshold) < 0 && currentPnL.compareTo(targetThreshold) >= 0)
+                            triggered = true;
+                        else if (lastPnL.compareTo(targetThreshold) > 0 && currentPnL.compareTo(targetThreshold) <= 0)
+                            triggered = true;
+
+                        if (triggered) {
+                            String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
+                            System.out.println(
+                                    "🚨 触发盈亏提醒: " + scope + " 当前盈亏: " + currentPnL + " 目标: " + targetThreshold);
+                            sendWxPusherNotification(alert, currentPnL);
+                            alert.lastTriggerTime = now;
+                            if ("once".equals(alert.frequency)) {
+                                alert.isTriggered = true;
+                                alert.enabled = false;
+                            }
+                            savePriceAlertsToFile();
                         }
-                        savePriceAlertsToFile();
                     }
+                    // 更新该 Key 的最后盈亏值
+                    lastPnls.put(pnlKey, currentPnL);
                 }
             } catch (Exception e) {
                 System.err.println("❌ 处理提醒时出错: " + alert.symbol);
