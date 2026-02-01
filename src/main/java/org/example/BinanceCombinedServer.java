@@ -22,6 +22,7 @@ public class BinanceCombinedServer {
     private static final String EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
     private static final String KLINES_URL = "https://fapi.binance.com/fapi/v1/klines";
     private static final String TICKER_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price";
+    private static final String POSITION_RISK_URL = "https://fapi.binance.com/fapi/v2/positionRisk";
     private static final String WX_PUSHER_URL = "https://wxpusher.zjiecode.com/api/send/message/simple-push";
     private static final String WX_PUSHER_SPT = "SPT_czS4n18uCRSQTUJtPSr1ZiRa3737";
 
@@ -571,59 +572,114 @@ public class BinanceCombinedServer {
     // 🌟 新增：高频价格检查逻辑
     private static void checkPriceAlerts() {
         // 🌟 只有当存在启用的提醒时才调用币安API
-        boolean hasEnabledAlert = priceAlerts.stream().anyMatch(a -> a.enabled);
-        if (!hasEnabledAlert)
+        List<PriceAlert> enabledAlerts = priceAlerts.stream().filter(a -> a.enabled).collect(Collectors.toList());
+        if (enabledAlerts.isEmpty())
             return;
 
-        String json = httpGet(TICKER_PRICE_URL);
-        if (json == null || json.isEmpty())
-            return;
+        // 分类提醒：价格类 vs 盈亏类
+        boolean hasPriceAlerts = enabledAlerts.stream().anyMatch(a -> "price_reached".equals(a.type));
+        boolean hasPnLAlerts = enabledAlerts.stream()
+                .anyMatch(a -> "profit_reached".equals(a.type) || "loss_reached".equals(a.type));
 
-        JsonArray arr = new Gson().fromJson(json, JsonArray.class);
-        Map<String, BigDecimal> currentPrices = new HashMap<>();
-        for (JsonElement el : arr) {
-            JsonObject obj = el.getAsJsonObject();
-            currentPrices.put(obj.get("symbol").getAsString(), obj.get("price").getAsBigDecimal());
+        Map<String, BigDecimal> currentTickerPrices = new HashMap<>();
+        if (hasPriceAlerts) {
+            String json = httpGet(TICKER_PRICE_URL);
+            if (json != null && !json.isEmpty()) {
+                JsonArray arr = new Gson().fromJson(json, JsonArray.class);
+                for (JsonElement el : arr) {
+                    JsonObject obj = el.getAsJsonObject();
+                    currentTickerPrices.put(obj.get("symbol").getAsString(), obj.get("price").getAsBigDecimal());
+                }
+            }
         }
 
-        for (PriceAlert alert : priceAlerts) {
+        JsonArray positions = null;
+        if (hasPnLAlerts) {
+            String json = httpGetWithSignature(POSITION_RISK_URL, "");
+            if (json != null && !json.contains("\"error\"")) {
+                positions = new Gson().fromJson(json, JsonArray.class);
+            }
+        }
+
+        long now = System.currentTimeMillis();
+        for (PriceAlert alert : enabledAlerts) {
             try {
-                // 🌟 核心判断 1：检查开关是否开启
-                if (!alert.enabled)
-                    continue;
-
-                // 🌟 防御性检查
-                if (alert.symbol == null || alert.symbol.isEmpty() || alert.targetPrice == null)
-                    continue;
-
-                // 🌟 核心判断 2：冷却时间检查
-                long now = System.currentTimeMillis();
+                // 🌟 冷却时间检查
                 if (now - alert.lastTriggerTime < (long) alert.cooldownSeconds * 1000) {
                     continue;
                 }
 
-                BigDecimal currentPrice = currentPrices.get(alert.symbol);
-                BigDecimal lastPrice = lastPrices.get(alert.symbol);
+                if ("price_reached".equals(alert.type)) {
+                    // 原有的价格提醒逻辑
+                    if (alert.symbol == null || alert.symbol.isEmpty() || alert.targetPrice == null)
+                        continue;
 
-                if (currentPrice != null && lastPrice != null) {
+                    BigDecimal currentPrice = currentTickerPrices.get(alert.symbol);
+                    BigDecimal lastPrice = lastPrices.get(alert.symbol);
+
+                    if (currentPrice != null && lastPrice != null) {
+                        boolean triggered = false;
+                        if (lastPrice.compareTo(alert.targetPrice) < 0
+                                && currentPrice.compareTo(alert.targetPrice) >= 0)
+                            triggered = true;
+                        else if (lastPrice.compareTo(alert.targetPrice) > 0
+                                && currentPrice.compareTo(alert.targetPrice) <= 0)
+                            triggered = true;
+
+                        if (triggered) {
+                            System.out.println(
+                                    "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: "
+                                            + alert.targetPrice);
+                            sendWxPusherNotification(alert, currentPrice);
+                            alert.lastTriggerTime = now;
+                            if ("once".equals(alert.frequency)) {
+                                alert.isTriggered = true;
+                                alert.enabled = false;
+                            }
+                            savePriceAlertsToFile();
+                        }
+                    }
+                } else if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)) {
+                    // 🌟 盈亏提醒逻辑
+                    if (positions == null || alert.targetPrice == null)
+                        continue;
+
+                    BigDecimal currentPnL = BigDecimal.ZERO;
+                    if (alert.symbol == null || alert.symbol.trim().isEmpty()) {
+                        // 全账户总盈亏
+                        for (JsonElement p : positions) {
+                            currentPnL = currentPnL.add(p.getAsJsonObject().get("unRealizedProfit").getAsBigDecimal());
+                        }
+                    } else {
+                        // 特定币种盈亏
+                        String targetSym = alert.symbol.trim().toUpperCase();
+                        for (JsonElement p : positions) {
+                            if (targetSym.equals(p.getAsJsonObject().get("symbol").getAsString())) {
+                                currentPnL = currentPnL
+                                        .add(p.getAsJsonObject().get("unRealizedProfit").getAsBigDecimal());
+                            }
+                        }
+                    }
+
                     boolean triggered = false;
-                    // 判定是否穿透阈值
-                    if (lastPrice.compareTo(alert.targetPrice) < 0 && currentPrice.compareTo(alert.targetPrice) >= 0)
-                        triggered = true;
-                    else if (lastPrice.compareTo(alert.targetPrice) > 0
-                            && currentPrice.compareTo(alert.targetPrice) <= 0)
-                        triggered = true;
+                    if ("profit_reached".equals(alert.type)) {
+                        if (currentPnL.compareTo(alert.targetPrice) >= 0)
+                            triggered = true;
+                    } else { // loss_reached
+                        // 亏损提醒，目标价应为正数(表示亏损金额)，所以判断 currentPnL <= -targetPrice
+                        if (currentPnL.compareTo(alert.targetPrice.negate()) <= 0)
+                            triggered = true;
+                    }
 
                     if (triggered) {
-                        System.out.println(
-                                "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: " + alert.targetPrice);
-                        sendWxPusherNotification(alert, currentPrice);
-
-                        // 🌟 更新触发状态
+                        String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
+                        System.out
+                                .println("🚨 触发盈亏提醒: " + scope + " 当前盈亏: " + currentPnL + " 目标: " + alert.targetPrice);
+                        sendWxPusherNotification(alert, currentPnL);
                         alert.lastTriggerTime = now;
                         if ("once".equals(alert.frequency)) {
                             alert.isTriggered = true;
-                            alert.enabled = false; // 一次触发后自动关闭开关
+                            alert.enabled = false;
                         }
                         savePriceAlertsToFile();
                     }
@@ -635,21 +691,44 @@ public class BinanceCombinedServer {
         }
 
         // 更新最后监控价格
-        lastPrices.putAll(currentPrices);
+        lastPrices.putAll(currentTickerPrices);
     }
 
     // 🌟 新增：发送 WxPusher 通知
-    private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentPrice) {
-        String typeDisplay = "price_reached".equals(alert.type) ? "价格到达" : alert.type;
-        String content = "<h1>🚨 " + typeDisplay + "提醒触发</h1>" +
-                "<p><b>交易对:</b> " + alert.symbol + "</p>" +
-                "<p><b>目标价格:</b> <span style='color:blue'>" + alert.targetPrice + "</span></p>" +
-                "<p><b>当前价格:</b> <span style='color:red'>" + currentPrice + "</span></p>" +
+    private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentValue) {
+        String typeDisplay = alert.type;
+        String title = "提醒触发";
+        String valueLabel = "当前数值";
+        String targetLabel = "目标数值";
+
+        if ("price_reached".equals(alert.type)) {
+            typeDisplay = "价格到达";
+            title = "🚨 价格提醒触发";
+            valueLabel = "当前价格";
+            targetLabel = "目标价格";
+        } else if ("profit_reached".equals(alert.type)) {
+            typeDisplay = "盈利达到";
+            title = "💰 盈利提醒触发";
+            valueLabel = "当前盈亏";
+            targetLabel = "目标盈利";
+        } else if ("loss_reached".equals(alert.type)) {
+            typeDisplay = "亏损达到";
+            title = "📉 亏损提醒触发";
+            valueLabel = "当前盈亏";
+            targetLabel = "目标亏损";
+        }
+
+        String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
+        String content = "<h1>" + title + "</h1>" +
+                "<p><b>监控对象:</b> " + scope + "</p>" +
+                "<p><b>提醒类型:</b> " + typeDisplay + "</p>" +
+                "<p><b>" + targetLabel + ":</b> <span style='color:blue'>" + alert.targetPrice + "</span></p>" +
+                "<p><b>" + valueLabel + ":</b> <span style='color:red'>" + currentValue + "</span></p>" +
                 "<p><b>时间:</b> " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p>";
 
         JsonObject body = new JsonObject();
         body.addProperty("content", content);
-        body.addProperty("summary", "价格提醒: " + alert.symbol + " 达到 " + alert.targetPrice);
+        body.addProperty("summary", typeDisplay + "提醒: " + scope + " 达到 " + alert.targetPrice);
         body.addProperty("contentType", 2); // HTML
         body.addProperty("spt", WX_PUSHER_SPT);
 

@@ -1376,13 +1376,15 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </td>
-                    <td><input type="text" class="${!alert.symbol ? 'invalid-input' : ''}" value="${alert.symbol || ''}" placeholder="币名" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
+                    <td><input type="text" class="${(!alert.symbol && alert.type === 'price_reached') ? 'invalid-input' : ''}" value="${alert.symbol || ''}" placeholder="${(alert.type === 'profit_reached' || alert.type === 'loss_reached') ? '持仓币名(选填)' : '币名'}" onchange="updateAlert(${index}, 'symbol', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'type', this.value)">
                             <option value="price_reached" ${alert.type === 'price_reached' ? 'selected' : ''}>价格到达</option>
+                            <option value="profit_reached" ${alert.type === 'profit_reached' ? 'selected' : ''}>盈利达到(USDT)</option>
+                            <option value="loss_reached" ${alert.type === 'loss_reached' ? 'selected' : ''}>亏损达到(USDT)</option>
                         </select>
                     </td>
-                    <td><input type="number" class="${!alert.targetPrice ? 'invalid-input' : ''}" value="${alert.targetPrice || ''}" placeholder="阈值" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
+                    <td><input type="number" class="${alert.targetPrice === null || alert.targetPrice === '' ? 'invalid-input' : ''}" value="${alert.targetPrice || ''}" placeholder="阈值" onchange="updateAlert(${index}, 'targetPrice', this.value)"></td>
                     <td>
                         <select onchange="updateAlert(${index}, 'frequency', this.value)">
                             <option value="once" ${alert.frequency === 'once' ? 'selected' : ''}>一次</option>
@@ -1439,10 +1441,18 @@
             try {
                 // 🌟 数据清洗与校验：只同步填写完整的提醒
                 const cleanedAlerts = priceAlerts
-                    .filter(a => a.symbol && a.symbol.trim() !== '' && a.targetPrice !== null && a.targetPrice !== '' && !isNaN(a.targetPrice))
+                    .filter(a => {
+                        const hasTarget = a.targetPrice !== null && a.targetPrice !== '' && !isNaN(a.targetPrice);
+                        if (a.type === 'price_reached') {
+                            return a.symbol && a.symbol.trim() !== '' && hasTarget;
+                        } else {
+                            // 盈亏提醒：币名选填
+                            return hasTarget;
+                        }
+                    })
                     .map(a => ({
                         ...a,
-                        symbol: a.symbol.trim().toUpperCase(),
+                        symbol: (a.symbol || '').trim().toUpperCase(),
                         targetPrice: parseFloat(a.targetPrice)
                     }));
 
