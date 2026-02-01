@@ -599,6 +599,9 @@ public class BinanceCombinedServer {
             String json = httpGetWithSignature(POSITION_RISK_URL, "");
             if (json != null && !json.contains("\"error\"")) {
                 positions = new Gson().fromJson(json, JsonArray.class);
+                // System.out.println("DEBUG: 已获取持仓数据，条数: " + positions.size());
+            } else {
+                System.err.println("❌ 获取持仓失败: " + json);
             }
         }
 
@@ -618,27 +621,30 @@ public class BinanceCombinedServer {
                     BigDecimal currentPrice = currentTickerPrices.get(alert.symbol);
                     BigDecimal lastPrice = lastPrices.get(alert.symbol);
 
-                    if (currentPrice != null && lastPrice != null) {
-                        boolean triggered = false;
-                        if (lastPrice.compareTo(alert.targetPrice) < 0
-                                && currentPrice.compareTo(alert.targetPrice) >= 0)
-                            triggered = true;
-                        else if (lastPrice.compareTo(alert.targetPrice) > 0
-                                && currentPrice.compareTo(alert.targetPrice) <= 0)
-                            triggered = true;
+                    if (currentPrice != null) {
+                        if (lastPrice != null) {
+                            boolean triggered = false;
+                            if (lastPrice.compareTo(alert.targetPrice) < 0
+                                    && currentPrice.compareTo(alert.targetPrice) >= 0)
+                                triggered = true;
+                            else if (lastPrice.compareTo(alert.targetPrice) > 0
+                                    && currentPrice.compareTo(alert.targetPrice) <= 0)
+                                triggered = true;
 
-                        if (triggered) {
-                            System.out.println(
-                                    "🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: "
-                                            + alert.targetPrice);
-                            sendWxPusherNotification(alert, currentPrice);
-                            alert.lastTriggerTime = now;
-                            if ("once".equals(alert.frequency)) {
-                                alert.isTriggered = true;
-                                alert.enabled = false;
+                            if (triggered) {
+                                System.out.println("🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: "
+                                        + alert.targetPrice);
+                                sendWxPusherNotification(alert, currentPrice);
+                                alert.lastTriggerTime = now;
+                                if ("once".equals(alert.frequency)) {
+                                    alert.isTriggered = true;
+                                    alert.enabled = false;
+                                }
+                                savePriceAlertsToFile();
                             }
-                            savePriceAlertsToFile();
                         }
+                        // 即使没有触发也存入状态，用于下一次穿越判断
+                        lastPrices.put(alert.symbol, currentPrice);
                     }
                 } else if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)) {
                     // 🌟 盈亏提醒逻辑
@@ -680,6 +686,28 @@ public class BinanceCombinedServer {
                             String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
                             System.out.println(
                                     "🚨 触发盈亏提醒: " + scope + " 当前盈亏: " + currentPnL + " 目标: " + targetThreshold);
+                            sendWxPusherNotification(alert, currentPnL);
+                            alert.lastTriggerTime = now;
+                            if ("once".equals(alert.frequency)) {
+                                alert.isTriggered = true;
+                                alert.enabled = false;
+                            }
+                            savePriceAlertsToFile();
+                        }
+                    } else {
+                        // 🌟 特殊处理：如果是第一次获取到数据（lastPnL 为空），且当前已经超过了阈值，也可以触发
+                        // 这样防止用户设置了一个已经达到的提醒却因为没“穿越”而不提醒
+                        boolean triggered = false;
+                        if ("profit_reached".equals(alert.type)) {
+                            if (currentPnL.compareTo(targetThreshold) >= 0)
+                                triggered = true;
+                        } else {
+                            if (currentPnL.compareTo(targetThreshold) <= 0)
+                                triggered = true;
+                        }
+                        if (triggered) {
+                            String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
+                            System.out.println("🚨 触发初始盈亏提醒: " + scope + " 当前盈亏: " + currentPnL);
                             sendWxPusherNotification(alert, currentPnL);
                             alert.lastTriggerTime = now;
                             if ("once".equals(alert.frequency)) {
