@@ -658,30 +658,74 @@ public class BinanceCombinedServer {
                             }
                         }
                     }
-                } else if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)) {
-                    // 🌟 盈亏提醒逻辑
-                    if (positions == null || alert.targetPrice == null)
+                } else if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)
+                        || "profit_step".equals(alert.type) || "loss_step".equals(alert.type)) {
+                    // 🌟 盈亏提醒逻辑 (支持固定阈值和步进)
+                    if (positions == null || alert.targetPrice == null
+                            || alert.targetPrice.compareTo(BigDecimal.ZERO) <= 0)
                         continue;
 
                     String pnlKey = (alert.symbol == null || alert.symbol.trim().isEmpty()) ? "ACCOUNT"
                             : alert.symbol.trim().toUpperCase();
                     BigDecimal currentPnL = currentPnLMap.getOrDefault(pnlKey, BigDecimal.ZERO);
                     BigDecimal lastPnL = lastPnls.get(pnlKey);
-                    BigDecimal targetThreshold = "profit_reached".equals(alert.type) ? alert.targetPrice
-                            : alert.targetPrice.negate();
 
                     if (lastPnL != null) {
                         boolean triggered = false;
-                        // 穿越逻辑：从下方穿过或从上方穿过阈值
-                        if (lastPnL.compareTo(targetThreshold) < 0 && currentPnL.compareTo(targetThreshold) >= 0)
-                            triggered = true;
-                        else if (lastPnL.compareTo(targetThreshold) > 0 && currentPnL.compareTo(targetThreshold) <= 0)
-                            triggered = true;
+                        String triggerMsg = "";
+
+                        if ("profit_reached".equals(alert.type) || "loss_reached".equals(alert.type)) {
+                            // 固定阈值逻辑
+                            BigDecimal targetThreshold = "profit_reached".equals(alert.type) ? alert.targetPrice
+                                    : alert.targetPrice.negate();
+
+                            if (lastPnL.compareTo(targetThreshold) < 0 && currentPnL.compareTo(targetThreshold) >= 0)
+                                triggered = true;
+                            else if (lastPnL.compareTo(targetThreshold) > 0
+                                    && currentPnL.compareTo(targetThreshold) <= 0)
+                                triggered = true;
+
+                            if (triggered) {
+                                triggerMsg = ("profit_reached".equals(alert.type) ? "盈利" : "亏损") + "达到阈值: "
+                                        + targetThreshold;
+                            }
+                        } else {
+                            // 🌟 步进逻辑 (每逢 X)
+                            BigDecimal step = alert.targetPrice;
+                            // 计算跨越了多少个台阶。考虑到负数，我们对亏损台阶取绝对值计算。
+                            if ("profit_step".equals(alert.type)) {
+                                // 只有在盈利区域才触发
+                                if (currentPnL.compareTo(BigDecimal.ZERO) > 0
+                                        || lastPnL.compareTo(BigDecimal.ZERO) > 0) {
+                                    long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    if (currentLevel != lastLevel) {
+                                        triggered = true;
+                                        triggerMsg = "盈利跨越台阶: "
+                                                + (Math.max(currentLevel, lastLevel) * step.doubleValue());
+                                    }
+                                }
+                            } else if ("loss_step".equals(alert.type)) {
+                                // 只有在亏损区域才触发 (PnL < 0)
+                                BigDecimal currAbsLoss = currentPnL.negate();
+                                BigDecimal lastAbsLoss = lastPnL.negate();
+                                if (currAbsLoss.compareTo(BigDecimal.ZERO) > 0
+                                        || lastAbsLoss.compareTo(BigDecimal.ZERO) > 0) {
+                                    long currentLevel = currAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    long lastLevel = lastAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    if (currentLevel != lastLevel) {
+                                        triggered = true;
+                                        triggerMsg = "亏损跨越台阶: "
+                                                + (Math.max(currentLevel, lastLevel) * step.doubleValue());
+                                    }
+                                }
+                            }
+                        }
 
                         if (triggered) {
                             String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
-                            System.out.println(
-                                    "🚨 触发盈亏提醒: " + scope + " 当前盈亏: " + currentPnL + " 目标: " + targetThreshold);
+                            System.out.println("🚨 触发盈亏提醒 (" + alert.type + "): " + scope + " " + triggerMsg
+                                    + " 当前PnL: " + currentPnL);
                             sendWxPusherNotification(alert, currentPnL);
                             alert.lastTriggerTime = now;
                             if ("once".equals(alert.frequency)) {
@@ -694,12 +738,14 @@ public class BinanceCombinedServer {
                         // 初始状态处理
                         boolean triggered = false;
                         if ("profit_reached".equals(alert.type)) {
-                            if (currentPnL.compareTo(targetThreshold) >= 0)
+                            if (currentPnL.compareTo(alert.targetPrice) >= 0)
                                 triggered = true;
-                        } else {
-                            if (currentPnL.compareTo(targetThreshold) <= 0)
+                        } else if ("loss_reached".equals(alert.type)) {
+                            if (currentPnL.compareTo(alert.targetPrice.negate()) <= 0)
                                 triggered = true;
                         }
+                        // 步进模式初始状态下暂不主动触发，等待下一次穿透
+
                         if (triggered) {
                             String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
                             System.out.println("🚨 触发初始盈亏提醒: " + scope + " 当前盈亏: " + currentPnL);
@@ -746,6 +792,16 @@ public class BinanceCombinedServer {
             title = "📉 亏损提醒触发";
             valueLabel = "当前盈亏";
             targetLabel = "目标亏损";
+        } else if ("profit_step".equals(alert.type)) {
+            typeDisplay = "每逢盈利";
+            title = "🚀 每逢盈利提醒";
+            valueLabel = "当前盈亏";
+            targetLabel = "步进区间";
+        } else if ("loss_step".equals(alert.type)) {
+            typeDisplay = "每逢亏损";
+            title = "⚠️ 每逢亏损提醒";
+            valueLabel = "当前盈亏";
+            targetLabel = "步进区间";
         }
 
         String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
