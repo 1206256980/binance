@@ -777,6 +777,25 @@ public class BinanceCombinedServer {
         String valueLabel = "当前数值";
         String targetLabel = "目标数值";
 
+        // 计算用于显示的“目标值”或“达到的台阶值”
+        BigDecimal displayTarget = alert.targetPrice;
+        if ("profit_step".equals(alert.type) || "loss_step".equals(alert.type)) {
+            // 对于步进提醒，计算当前所处的最大台阶
+            // 例如：步进10，当前25，则显示达到20
+            if (alert.targetPrice.compareTo(BigDecimal.ZERO) > 0) {
+                long multiplier = currentValue.abs().divide(alert.targetPrice, 0, RoundingMode.FLOOR).longValue();
+                // 至少显示一个步长，或者是0？通常是multiplier * step
+                // 如果是从 12 跌回 9 (步长10)，multiplier=0。此时显示达到0或者回到0？
+                // 按照用户习惯，可能是“跨越了 10”。如果现在是 9，之前是 12，说明跌破 10。
+                // 但这里只拿到了 currentValue。为了简单直观，显示当前所处的层级线。
+                // 如果 currentValue 是 9，显示 0 可能有点怪，但却是事实（位于 0-10区间）。
+                // 如果用户希望看到“刚破的线”，需要把 crossed value 传进来。
+                // 鉴于 checkPriceAlerts 里没有传 crossed value，我们暂时用当前的整台阶显示。
+                // 如果是 21，显示 20。
+                displayTarget = alert.targetPrice.multiply(new BigDecimal(multiplier));
+            }
+        }
+
         if ("price_reached".equals(alert.type)) {
             typeDisplay = "价格到达";
             title = "🚨 价格提醒触发";
@@ -792,29 +811,32 @@ public class BinanceCombinedServer {
             title = "📉 亏损提醒触发";
             valueLabel = "当前盈亏";
             targetLabel = "目标亏损";
+            // 对于 loss_reached，targetPrice 是正数显示的亏损额，所以 displayTarget 不用动，就是
+            // alert.targetPrice
         } else if ("profit_step".equals(alert.type)) {
             typeDisplay = "每逢盈利";
             title = "🚀 每逢盈利提醒";
             valueLabel = "当前盈亏";
-            targetLabel = "步进区间";
+            targetLabel = "当前台阶";
         } else if ("loss_step".equals(alert.type)) {
             typeDisplay = "每逢亏损";
             title = "⚠️ 每逢亏损提醒";
             valueLabel = "当前盈亏";
-            targetLabel = "步进区间";
+            targetLabel = "当前台阶";
         }
 
         String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
         String content = "<h1>" + title + "</h1>" +
                 "<p><b>监控对象:</b> " + scope + "</p>" +
                 "<p><b>提醒类型:</b> " + typeDisplay + "</p>" +
-                "<p><b>" + targetLabel + ":</b> <span style='color:blue'>" + alert.targetPrice + "</span></p>" +
+                "<p><b>" + targetLabel + ":</b> <span style='color:blue'>" + displayTarget + "</span></p>" +
                 "<p><b>" + valueLabel + ":</b> <span style='color:red'>" + currentValue + "</span></p>" +
                 "<p><b>时间:</b> " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p>";
 
         JsonObject body = new JsonObject();
         body.addProperty("content", content);
-        body.addProperty("summary", typeDisplay + "提醒: " + scope + " 达到 " + alert.targetPrice);
+        // summary 也修正为显示 displayTarget
+        body.addProperty("summary", typeDisplay + "提醒: " + scope + " 达到 " + displayTarget);
         body.addProperty("contentType", 2); // HTML
         body.addProperty("spt", WX_PUSHER_SPT);
 
