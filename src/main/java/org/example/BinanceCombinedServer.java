@@ -648,7 +648,7 @@ public class BinanceCombinedServer {
                             if (triggered) {
                                 System.out.println("🚨 触发价格提醒: " + alert.symbol + " 当前价: " + currentPrice + " 目标价: "
                                         + alert.targetPrice);
-                                sendWxPusherNotification(alert, currentPrice);
+                                sendWxPusherNotification(alert, currentPrice, alert.targetPrice);
                                 alert.lastTriggerTime = now;
                                 if ("once".equals(alert.frequency)) {
                                     alert.isTriggered = true;
@@ -688,55 +688,71 @@ public class BinanceCombinedServer {
                             if (triggered) {
                                 triggerMsg = ("profit_reached".equals(alert.type) ? "盈利" : "亏损") + "达到阈值: "
                                         + targetThreshold;
+                                // 🌟 传递固定阈值作为显示目标
+                                sendWxPusherNotification(alert, currentPnL, alert.targetPrice);
+                                alert.lastTriggerTime = now;
+                                if ("once".equals(alert.frequency)) {
+                                    alert.isTriggered = true;
+                                    alert.enabled = false;
+                                }
+                                savePriceAlertsToFile();
                             }
                         } else {
                             // 🌟 步进逻辑 (每逢 X)
                             BigDecimal step = alert.targetPrice;
                             // 计算跨越了多少个台阶。考虑到负数，我们对亏损台阶取绝对值计算。
+                            BigDecimal crossedBoundary = null;
+
                             if ("profit_step".equals(alert.type)) {
-                                // 只有在盈利区域才触发
-                                if (currentPnL.compareTo(BigDecimal.ZERO) > 0
-                                        || lastPnL.compareTo(BigDecimal.ZERO) > 0) {
-                                    long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                    long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                    if (currentLevel != lastLevel) {
-                                        triggered = true;
-                                        triggerMsg = "盈利跨越台阶: "
-                                                + (Math.max(currentLevel, lastLevel) * step.doubleValue());
-                                    }
+                                long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+
+                                // 🌟 恢复：只要层级变化就提醒 (双向提醒)
+                                if (currentLevel != lastLevel) {
+                                    triggered = true;
+                                    // 始终显示较高的那个层级作为“台阶线”，例如 20<->10，都显示 20 这个线
+                                    // 或者按照用户习惯，显示“触碰线”。
+                                    // 21 -> 19 (Crossed 20). Max(2,1)=2. 2*10=20. Correct.
+                                    // 19 -> 21 (Crossed 20). Max(2,1)=2. 2*10=20. Correct.
+                                    double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
+                                    triggerMsg = "盈利跨越台阶: " + boundaryVal;
+                                    crossedBoundary = new BigDecimal(boundaryVal);
                                 }
                             } else if ("loss_step".equals(alert.type)) {
                                 // 只有在亏损区域才触发 (PnL < 0)
                                 BigDecimal currAbsLoss = currentPnL.negate();
                                 BigDecimal lastAbsLoss = lastPnL.negate();
-                                if (currAbsLoss.compareTo(BigDecimal.ZERO) > 0
-                                        || lastAbsLoss.compareTo(BigDecimal.ZERO) > 0) {
-                                    long currentLevel = currAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                    long lastLevel = lastAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                    if (currentLevel != lastLevel) {
-                                        triggered = true;
-                                        triggerMsg = "亏损跨越台阶: "
-                                                + (Math.max(currentLevel, lastLevel) * step.doubleValue());
-                                    }
+
+                                long currentLevel = currAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                long lastLevel = lastAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+
+                                // 🌟 恢复：只要层级变化就提醒 (双向提醒)
+                                if (currentLevel != lastLevel) {
+                                    triggered = true;
+                                    double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
+                                    triggerMsg = "亏损跨越台阶: " + boundaryVal;
+                                    crossedBoundary = new BigDecimal(boundaryVal);
                                 }
                             }
-                        }
 
-                        if (triggered) {
-                            String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
-                            System.out.println("🚨 触发盈亏提醒 (" + alert.type + "): " + scope + " " + triggerMsg
-                                    + " 当前PnL: " + currentPnL);
-                            sendWxPusherNotification(alert, currentPnL);
-                            alert.lastTriggerTime = now;
-                            if ("once".equals(alert.frequency)) {
-                                alert.isTriggered = true;
-                                alert.enabled = false;
+                            if (triggered && crossedBoundary != null) {
+                                String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
+                                System.out.println("🚨 触发盈亏提醒 (" + alert.type + "): " + scope + " " + triggerMsg
+                                        + " 当前PnL: " + currentPnL);
+                                sendWxPusherNotification(alert, currentPnL, crossedBoundary);
+                                alert.lastTriggerTime = now;
+                                if ("once".equals(alert.frequency)) {
+                                    alert.isTriggered = true;
+                                    alert.enabled = false;
+                                }
+                                savePriceAlertsToFile();
                             }
-                            savePriceAlertsToFile();
                         }
                     } else {
                         // 初始状态处理
                         boolean triggered = false;
+                        BigDecimal initialBoundary = alert.targetPrice;
+
                         if ("profit_reached".equals(alert.type)) {
                             if (currentPnL.compareTo(alert.targetPrice) >= 0)
                                 triggered = true;
@@ -749,7 +765,7 @@ public class BinanceCombinedServer {
                         if (triggered) {
                             String scope = (alert.symbol == null || alert.symbol.isEmpty()) ? "全账户" : alert.symbol;
                             System.out.println("🚨 触发初始盈亏提醒: " + scope + " 当前盈亏: " + currentPnL);
-                            sendWxPusherNotification(alert, currentPnL);
+                            sendWxPusherNotification(alert, currentPnL, initialBoundary);
                             alert.lastTriggerTime = now;
                             if ("once".equals(alert.frequency)) {
                                 alert.isTriggered = true;
@@ -771,30 +787,14 @@ public class BinanceCombinedServer {
     }
 
     // 🌟 新增：发送 WxPusher 通知
-    private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentValue) {
+    private static void sendWxPusherNotification(PriceAlert alert, BigDecimal currentValue, BigDecimal displayValue) {
         String typeDisplay = alert.type;
         String title = "提醒触发";
         String valueLabel = "当前数值";
         String targetLabel = "目标数值";
 
-        // 计算用于显示的“目标值”或“达到的台阶值”
-        BigDecimal displayTarget = alert.targetPrice;
-        if ("profit_step".equals(alert.type) || "loss_step".equals(alert.type)) {
-            // 对于步进提醒，计算当前所处的最大台阶
-            // 例如：步进10，当前25，则显示达到20
-            if (alert.targetPrice.compareTo(BigDecimal.ZERO) > 0) {
-                long multiplier = currentValue.abs().divide(alert.targetPrice, 0, RoundingMode.FLOOR).longValue();
-                // 至少显示一个步长，或者是0？通常是multiplier * step
-                // 如果是从 12 跌回 9 (步长10)，multiplier=0。此时显示达到0或者回到0？
-                // 按照用户习惯，可能是“跨越了 10”。如果现在是 9，之前是 12，说明跌破 10。
-                // 但这里只拿到了 currentValue。为了简单直观，显示当前所处的层级线。
-                // 如果 currentValue 是 9，显示 0 可能有点怪，但却是事实（位于 0-10区间）。
-                // 如果用户希望看到“刚破的线”，需要把 crossed value 传进来。
-                // 鉴于 checkPriceAlerts 里没有传 crossed value，我们暂时用当前的整台阶显示。
-                // 如果是 21，显示 20。
-                displayTarget = alert.targetPrice.multiply(new BigDecimal(multiplier));
-            }
-        }
+        // 这里的 displayValue 是从调用方传来的“触发线”
+        BigDecimal displayTarget = displayValue;
 
         if ("price_reached".equals(alert.type)) {
             typeDisplay = "价格到达";
