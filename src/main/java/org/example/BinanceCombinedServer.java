@@ -1,4 +1,4 @@
-package org.example;
+﻿package org.example;
 
 import com.google.gson.*;
 import com.google.gson.annotations.SerializedName;
@@ -704,34 +704,33 @@ public class BinanceCombinedServer {
                             BigDecimal crossedBoundary = null;
 
                             if ("profit_step".equals(alert.type)) {
-                                long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                // 🌟 关键修复：profit_step 只在盈利区域内工作
+                                if (currentPnL.compareTo(BigDecimal.ZERO) > 0 && lastPnL.compareTo(BigDecimal.ZERO) > 0) {
+                                    long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
 
-                                // 🌟 恢复：只要层级变化就提醒 (双向提醒)
-                                if (currentLevel != lastLevel) {
-                                    triggered = true;
-                                    // 始终显示较高的那个层级作为“台阶线”，例如 20<->10，都显示 20 这个线
-                                    // 或者按照用户习惯，显示“触碰线”。
-                                    // 21 -> 19 (Crossed 20). Max(2,1)=2. 2*10=20. Correct.
-                                    // 19 -> 21 (Crossed 20). Max(2,1)=2. 2*10=20. Correct.
-                                    double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
-                                    triggerMsg = "盈利跨越台阶: " + boundaryVal;
-                                    crossedBoundary = new BigDecimal(boundaryVal);
+                                    if (currentLevel != lastLevel) {
+                                        triggered = true;
+                                        double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
+                                        triggerMsg = "盈利跨越台阶: " + boundaryVal;
+                                        crossedBoundary = new BigDecimal(boundaryVal);
+                                    }
                                 }
                             } else if ("loss_step".equals(alert.type)) {
-                                // 只有在亏损区域才触发 (PnL < 0)
-                                BigDecimal currAbsLoss = currentPnL.negate();
-                                BigDecimal lastAbsLoss = lastPnL.negate();
+                                //  关键修复：loss_step 只在亏损区域内工作
+                                if (currentPnL.compareTo(BigDecimal.ZERO) < 0 && lastPnL.compareTo(BigDecimal.ZERO) < 0) {
+                                    BigDecimal currAbsLoss = currentPnL.negate();
+                                    BigDecimal lastAbsLoss = lastPnL.negate();
 
-                                long currentLevel = currAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
-                                long lastLevel = lastAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    long currentLevel = currAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
+                                    long lastLevel = lastAbsLoss.divide(step, 0, RoundingMode.FLOOR).longValue();
 
-                                // 🌟 恢复：只要层级变化就提醒 (双向提醒)
-                                if (currentLevel != lastLevel) {
-                                    triggered = true;
-                                    double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
-                                    triggerMsg = "亏损跨越台阶: " + boundaryVal;
-                                    crossedBoundary = new BigDecimal(boundaryVal);
+                                    if (currentLevel != lastLevel) {
+                                        triggered = true;
+                                        double boundaryVal = Math.max(currentLevel, lastLevel) * step.doubleValue();
+                                        triggerMsg = "亏损跨越台阶: " + boundaryVal;
+                                        crossedBoundary = new BigDecimal(boundaryVal);
+                                    }
                                 }
                             }
 
