@@ -705,7 +705,8 @@ public class BinanceCombinedServer {
 
                             if ("profit_step".equals(alert.type)) {
                                 // 🌟 关键修复：profit_step 只在盈利区域内工作
-                                if (currentPnL.compareTo(BigDecimal.ZERO) > 0 && lastPnL.compareTo(BigDecimal.ZERO) > 0) {
+                                if (currentPnL.compareTo(BigDecimal.ZERO) > 0
+                                        && lastPnL.compareTo(BigDecimal.ZERO) > 0) {
                                     long currentLevel = currentPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
                                     long lastLevel = lastPnL.divide(step, 0, RoundingMode.FLOOR).longValue();
 
@@ -717,8 +718,9 @@ public class BinanceCombinedServer {
                                     }
                                 }
                             } else if ("loss_step".equals(alert.type)) {
-                                //  关键修复：loss_step 只在亏损区域内工作
-                                if (currentPnL.compareTo(BigDecimal.ZERO) < 0 && lastPnL.compareTo(BigDecimal.ZERO) < 0) {
+                                // 关键修复：loss_step 只在亏损区域内工作
+                                if (currentPnL.compareTo(BigDecimal.ZERO) < 0
+                                        && lastPnL.compareTo(BigDecimal.ZERO) < 0) {
                                     BigDecimal currAbsLoss = currentPnL.negate();
                                     BigDecimal lastAbsLoss = lastPnL.negate();
 
@@ -834,8 +836,8 @@ public class BinanceCombinedServer {
 
         JsonObject body = new JsonObject();
         body.addProperty("content", content);
-        // summary 也修正为显示 displayTarget
-        body.addProperty("summary", typeDisplay + "提醒: " + scope + " 达到 " + displayTarget);
+        // summary 显示当前实际盈亏值
+        body.addProperty("summary", typeDisplay + "提醒: " + scope + " 达到 " + currentValue);
         body.addProperty("contentType", 2); // HTML
         body.addProperty("spt", WX_PUSHER_SPT);
 
