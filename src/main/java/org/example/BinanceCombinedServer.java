@@ -181,7 +181,8 @@ public class BinanceCombinedServer {
         alertScheduler.scheduleAtFixedRate(() -> {
             try {
                 checkPriceAlerts();
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // 必须捕获 Throwable，否则 Error 会导致调度器永久停止
                 e.printStackTrace();
             }
         }, 3, 3, TimeUnit.SECONDS);
@@ -580,7 +581,8 @@ public class BinanceCombinedServer {
         // 分类提醒：价格类 vs 盈亏类
         boolean hasPriceAlerts = enabledAlerts.stream().anyMatch(a -> "price_reached".equals(a.type));
         boolean hasPnLAlerts = enabledAlerts.stream()
-                .anyMatch(a -> "profit_reached".equals(a.type) || "loss_reached".equals(a.type));
+                .anyMatch(a -> "profit_reached".equals(a.type) || "loss_reached".equals(a.type)
+                        || "profit_step".equals(a.type) || "loss_step".equals(a.type)); // 🐛 修复：步进类型同样需要拉取持仓数据
 
         Map<String, BigDecimal> currentTickerPrices = new HashMap<>();
         if (hasPriceAlerts) {
