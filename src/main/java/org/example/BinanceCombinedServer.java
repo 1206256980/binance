@@ -601,25 +601,29 @@ public class BinanceCombinedServer {
             String json = httpGetWithSignature(POSITION_RISK_URL, "");
             if (json != null && !json.contains("\"error\"")) {
                 positions = new Gson().fromJson(json, JsonArray.class);
-                System.out.println("[盈亏查询] 获取持仓成功，条数: " + positions.size()
-                        + "，启用提醒数: " + enabledAlerts.size());
             } else {
                 System.err.println("[盈亏查询] ❌ 获取持仓失败: " + json);
             }
         }
 
-        // 🌟 新增：提取并计算所有当前的 PnL 情况，防止在循环中更新状态导致后续提醒失效
+        // 🌟 提取并计算所有当前的 PnL 情况（只处理有实际持仓的记录）
         Map<String, BigDecimal> currentPnLMap = new HashMap<>();
         if (positions != null) {
             BigDecimal totalAccPnL = BigDecimal.ZERO;
+            int activeCount = 0;
             for (JsonElement p : positions) {
                 JsonObject obj = p.getAsJsonObject();
+                BigDecimal posAmt = obj.get("positionAmt").getAsBigDecimal();
+                if (posAmt.compareTo(BigDecimal.ZERO) == 0)
+                    continue; // 跳过无持仓的
+                activeCount++;
                 BigDecimal pnl = obj.get("unRealizedProfit").getAsBigDecimal();
                 String sym = obj.get("symbol").getAsString();
                 currentPnLMap.put(sym, currentPnLMap.getOrDefault(sym, BigDecimal.ZERO).add(pnl));
                 totalAccPnL = totalAccPnL.add(pnl);
             }
             currentPnLMap.put("ACCOUNT", totalAccPnL);
+            System.out.println("[盈亏查询] 实际持仓: " + activeCount + " 个，总盈亏: " + totalAccPnL);
         }
 
         long now = System.currentTimeMillis();
