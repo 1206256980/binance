@@ -601,9 +601,10 @@ public class BinanceCombinedServer {
             String json = httpGetWithSignature(POSITION_RISK_URL, "");
             if (json != null && !json.contains("\"error\"")) {
                 positions = new Gson().fromJson(json, JsonArray.class);
-                // System.out.println("DEBUG: 已获取持仓数据，条数: " + positions.size());
+                System.out.println("[盈亏查询] 获取持仓成功，条数: " + positions.size()
+                        + "，启用提醒数: " + enabledAlerts.size());
             } else {
-                System.err.println("❌ 获取持仓失败: " + json);
+                System.err.println("[盈亏查询] ❌ 获取持仓失败: " + json);
             }
         }
 
