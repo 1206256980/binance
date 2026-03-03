@@ -67,6 +67,13 @@
             <version>2.14.2</version>
         </dependency>
 
+        <!-- Logback，用于自定义日志格式（时间 + 类路径） -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.3.14</version> <!-- 最后支持 JDK8 的版本 -->
+        </dependency>
+
     </dependencies>
 
     <build>
