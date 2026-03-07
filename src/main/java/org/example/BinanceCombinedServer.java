@@ -27,8 +27,8 @@ public class BinanceCombinedServer {
     private static final String WX_PUSHER_SPT = "SPT_czS4n18uCRSQTUJtPSr1ZiRa3737";
 
     // 🌟 币安 API Key（用于获取 MMR 数据）
-    private static final String BINANCE_API_KEY = "piFGDiG2hwjXzKiC0OfoP6CMhHSGcyWVDBhJlFNR7EZuS0ooZodwOScTQrx9uOXk";
-    private static final String BINANCE_SECRET_KEY = "UpUsxSklT2PCfxYgoDmMrQMMUoTTY4k73pEYNs9Gxg9vGpSdaFjrnhw13eHjUl4B";
+    private static final String BINANCE_API_KEY = "WREN0WBHbxbRnkByo40E7o9r2ASDG1yyJpIfLI9lGYgoUBcAYip0eWrCjaOzsGxw";
+    private static final String BINANCE_SECRET_KEY = "hBrGfYYXFffI2P1fNg8Y3mEL8hqVGiQ9dcrzVv5vc2BwZ2xUvTuUNdSgnRBagwXb";
     private static final int THREADS = 50;
     private static final int DEFAULT_REFRESH_SECONDS = 35;
     private static final String[] INTERVALS = { "5m", "10m", "15m", "30m", "40m", "50m", "60m", "120m", "240m" };
