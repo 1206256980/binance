@@ -179,7 +179,7 @@ public class BinanceCombinedServer {
 
         loadPriceAlertsFromFile();
 
-        // 🌟 价格提醒：每 5 秒检查一次（需要实时监控）
+        // 🌟 价格提醒：每 3 秒检查一次（需要实时监控）
         ScheduledExecutorService alertScheduler = Executors.newScheduledThreadPool(1);
         alertScheduler.scheduleAtFixedRate(() -> {
             try {
@@ -188,7 +188,7 @@ public class BinanceCombinedServer {
                 // 必须捕获 Throwable，否则 Error 会导致调度器永久停止
                 e.printStackTrace();
             }
-        }, 5, 5, TimeUnit.SECONDS);
+        }, 3, 3, TimeUnit.SECONDS);
 
         // 🌟 排行榜数据：改为按需刷新（用户访问时才调用币安API，节省资源）
         // 移除了原来的定时刷新任务，改为在 /data 和 /strong 接口中按需刷新
