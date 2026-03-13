@@ -68,6 +68,9 @@ public class BinanceCombinedServer {
     private static Map<String, BigDecimal> lastPrices = new ConcurrentHashMap<>();
     private static Map<String, BigDecimal> lastPnls = new ConcurrentHashMap<>();
 
+    // 🌟 全局变量：存储最新的总盈亏
+    private static volatile BigDecimal globalTotalPnL = BigDecimal.ZERO;
+
     // ------------------- 数据模型 -------------------
     static class CandleRaw {
         BigDecimal open, high, low, close, volume;
@@ -294,6 +297,12 @@ public class BinanceCombinedServer {
                 res.status(500);
                 return "{\"error\":\"" + e.getMessage() + "\"}";
             }
+        });
+
+        // 🌟 新增接口：获取全局总盈亏
+        Spark.get("/current-pnl", (req, res) -> {
+            res.type("application/json; charset=UTF-8");
+            return "{\"totalPnL\": " + (globalTotalPnL != null ? globalTotalPnL.toString() : "\"0\"") + "}";
         });
 
     }
@@ -623,6 +632,7 @@ public class BinanceCombinedServer {
                 totalAccPnL = totalAccPnL.add(pnl);
             }
             currentPnLMap.put("ACCOUNT", totalAccPnL);
+            globalTotalPnL = totalAccPnL; // 🌟 更新全局总盈亏
             System.out.println("[盈亏查询] 实际持仓: " + activeCount + " 个，总盈亏: " + totalAccPnL);
         }
 

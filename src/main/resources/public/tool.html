@@ -308,8 +308,16 @@
             </div>
 
             <div class="calculator-section wide">
-                <h2>3. 🔔 价格提醒工具</h2>
-                <p style="font-size: 0.8em; color: #6c757d;">价格穿透阈值即送微信提醒 (1s级监控)</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <h2 style="margin: 0;">3. 🔔 价格提醒工具</h2>
+                        <p style="font-size: 0.8em; color: #6c757d; margin: 5px 0 0 0;">价格穿透阈值即送微信提醒 (1s级监控)</p>
+                    </div>
+                    <div
+                        style="font-size: 1.1em; font-weight: bold; padding: 6px 15px; border-radius: 6px; background: #eef7ff; border: 2px solid #b3d7ff;">
+                        当前盈亏：<span id="globalPnLValue" style="color: #007bff;">-</span> U
+                    </div>
+                </div>
 
                 <div style="max-height: 250px; overflow-y: auto;">
                     <table class="alert-table">
@@ -1489,6 +1497,33 @@
 
         // 初始化加载
         loadPriceAlerts();
+
+        // 🌟 新增：每 3 秒获取一次全局总盈亏
+        async function fetchGlobalPnL() {
+            try {
+                const res = await fetch('/current-pnl');
+                const data = await res.json();
+                const pnlValue = parseFloat(data.totalPnL);
+                const displayEl = document.getElementById('globalPnLValue');
+                if (displayEl && !isNaN(pnlValue)) {
+                    displayEl.textContent = pnlValue.toFixed(2);
+                    // 动态颜色
+                    if (pnlValue > 0) {
+                        displayEl.style.color = '#28a745'; // 绿
+                    } else if (pnlValue < 0) {
+                        displayEl.style.color = '#dc3545'; // 红
+                    } else {
+                        displayEl.style.color = '#6c757d'; // 灰
+                    }
+                }
+            } catch (e) {
+                console.error('获取全局盈亏失败', e);
+            }
+        }
+
+        // 初始获取一次，然后每 3 秒获取
+        fetchGlobalPnL();
+        setInterval(fetchGlobalPnL, 3000);
 
     </script>
 
